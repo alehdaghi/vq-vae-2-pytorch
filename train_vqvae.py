@@ -90,7 +90,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             mse_sum += part["mse_sum"]
             mse_n += part["mse_n"]
 
-        id_err = loss_id_fake.item() + loss_id_real.item()
+        id_err = loss_id_fake.item() + loss_id_real.item() + loss_triplet.item()
         id_sum += id_err
         feat_err = feat_loss.item()
         feat_sum += feat_err
@@ -101,7 +101,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             loader.set_description(
                 (
                     f"epoch: {epoch + 1}; mse: {recon_loss.item():.5f}; "
-                    f"latent: {latent_loss.item():.3f}; avg mse: {mse_sum / mse_n:.5f}; "
+                    f"lat: {latent_loss.item():.3f}; avg mse: {mse_sum / mse_n:.5f}; "
                     f"id: {id_err:.3f}; avg id: {id_sum / mse_n:.3f}; "
                     f"feat: {feat_err:.3f}; avg feat: {feat_sum / mse_n:.5f}; "
                     f"lr: {lr:.5f}"
@@ -112,7 +112,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 # model.eval()
 
                 sample = img1[:sample_size]
-                fake_rgb = out2[:sample_size]
+                fake_rgb = rgb_fake[:sample_size]
                 fake_ir = ir_fake[:sample_size]
                 real_ir = img2[:sample_size]
 
@@ -145,12 +145,9 @@ def main(args):
     )
 
     dataset = SYSUData(args.path, transform=transform)
-    sampler = dataset.samplize(args.batch_size, args.num_pos)
+
     loader_batch = args.batch_size * args.num_pos
 
-    loader = DataLoader(
-        dataset, batch_size=loader_batch // args.n_gpu, sampler=sampler, num_workers=args.workers
-    )
 
 
     model = ModelAdaptive(dataset.num_class).to(device) #VQVAE().to(device)
@@ -181,12 +178,17 @@ def main(args):
         scheduler = CycleScheduler(
             optimizer,
             args.lr,
-            n_iter=len(loader) * args.epoch,
+            n_iter=len(dataset) * args.epoch,
             momentum=None,
             warmup_proportion=0.05,
         )
 
     for i in range(args.epoch):
+        sampler = dataset.samplize(args.batch_size, args.num_pos)
+        loader = DataLoader(
+            dataset, batch_size=loader_batch // args.n_gpu, sampler=sampler, num_workers=args.workers
+        )
+
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
 
         if i % 10 == 0 and dist.is_primary():
