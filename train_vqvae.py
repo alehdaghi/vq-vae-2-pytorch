@@ -108,13 +108,15 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 )
             )
 
-            if i % 100 == 0:
+            if i % 1 == 0:
                 # model.eval()
 
-                sample = img1[:sample_size]
-                fake_rgb = rgb_fake[:sample_size]
-                fake_ir = ir_fake[:sample_size]
-                real_ir = img2[:sample_size]
+                index = np.random.choice(np.arange(bs), min(bs, sample_size))
+
+                sample = img1[index]
+                fake_rgb = rgb_fake[index]
+                fake_ir = ir_fake[index]
+                real_ir = img2[index]
 
                 # with torch.no_grad():
                 #     out, _ = model(sample)
@@ -123,7 +125,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                     invTrans(torch.cat([sample, fake_rgb, real_ir, fake_ir], 0)),
                     f"sample/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(sample),
-                    normalize=True,
+                    # normalize=True,
                     range=(-1, 1),
                 )
 

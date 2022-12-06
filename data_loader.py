@@ -50,13 +50,11 @@ class SYSUData(data.Dataset):
                               self.train_color_cam[self.cIndex[index]]
         img2, target2, cam2 = self.train_ir_image[self.tIndex[index]], self.train_ir_label[self.tIndex[index]], \
                               self.train_ir_cam[self.tIndex[index]]
-        img1 = self.transform(img1)
-        img2 = self.transform(img2)
 
-        return img1, img2, target1, target2, cam1, cam2
+        return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2
 
     def __len__(self):
-        return len(self.train_color_image) + len(self.train_ir_image)
+        return len(self.cIndex)
 
     @staticmethod
     def rgb2gray(rgb):
