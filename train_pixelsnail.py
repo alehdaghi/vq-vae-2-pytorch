@@ -149,7 +149,8 @@ if __name__ == '__main__':
 
     for i in range(args.epoch):
         train(args, i, loader, model, optimizer, scheduler, device)
-        torch.save(
-            {'model': model.module.state_dict(), 'args': args},
-            f'checkpoint/pixelsnail_{args.hier}_{str(i + 1).zfill(3)}.pt',
-        )
+        if i % 10 == 0 or i >= (args.epoch - 1):
+            torch.save(
+                {'model': model.module.state_dict(), 'args': args},
+                f'checkpoint/pixelsnail_{args.hier}_{str(i + 1).zfill(3)}.pt',
+            )

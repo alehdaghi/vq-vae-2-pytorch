@@ -132,12 +132,16 @@ class Decoder(nn.Module):
     ):
         super().__init__()
 
-        blocks = [nn.Conv2d(in_channel, channel, 3, padding=1)]
+        blocks = [#AdaptiveInstanceNorm2d(in_channel),
+                  nn.Conv2d(in_channel, channel, 3, padding=1)
+                  ]
 
         for i in range(n_res_block):
+            # blocks.append(AdaptiveInstanceNorm2d(channel))
             blocks.append(ResBlock(channel, n_res_channel))
 
         blocks.append(nn.ReLU(inplace=True))
+        # blocks.append(AdaptiveInstanceNorm2d(channel))
 
         if stride == 4:
             blocks.extend(
@@ -195,11 +199,21 @@ class VQVAE(nn.Module):
             stride=4,
         )
 
+        self.dec_ir = Decoder(
+            embed_dim + embed_dim,
+            1,
+            channel,
+            n_res_block + 2,
+            n_res_channel,
+            stride=4,
+        )
+
+
+
     def forward(self, input):
         quant_t, quant_b, diff, _, _ = self.encode(input)
-        dec = self.decode(quant_t, quant_b)
-
-        return dec, diff
+        dec, dec2 = self.decode(quant_t, quant_b)
+        return dec, diff, dec2
 
     def encode(self, input):
         enc_b = self.enc_b(input)
@@ -224,8 +238,8 @@ class VQVAE(nn.Module):
         upsample_t = self.upsample_t(quant_t)
         quant = torch.cat([upsample_t, quant_b], 1)
         dec = self.dec(quant)
-
-        return dec
+        dec2 = self.dec_ir(quant).expand(-1, 3, -1, -1)
+        return dec, dec2
 
     def decode_code(self, code_t, code_b):
         quant_t = self.quantize_t.embed_code(code_t)
@@ -236,3 +250,36 @@ class VQVAE(nn.Module):
         dec = self.decode(quant_t, quant_b)
 
         return dec
+
+
+class AdaptiveInstanceNorm2d(nn.Module):
+    def __init__(self, num_features, eps=1e-5, momentum=0.1):
+        super(AdaptiveInstanceNorm2d, self).__init__()
+        self.num_features = num_features
+        self.eps = eps
+        self.momentum = momentum
+        # weight and bias are dynamically assigned
+        self.weight = None
+        self.bias = None
+        # just dummy buffers, not used
+        self.register_buffer('running_mean', torch.zeros(num_features))
+        self.register_buffer('running_var', torch.ones(num_features))
+
+    def forward(self, x):
+        assert self.weight is not None and self.bias is not None, "Please assign weight and bias before calling AdaIN!"
+        b, c = x.size(0), x.size(1)
+        running_mean = self.running_mean.repeat(b)
+        running_var = self.running_var.repeat(b)
+
+        # Apply instance norm
+        x_reshaped = x.contiguous().view(1, b * c, *x.size()[2:])
+
+        out = F.batch_norm(
+            x_reshaped, running_mean, running_var, self.weight, self.bias,
+            True, self.momentum, self.eps)
+
+        return out.view(b, c, *x.size()[2:])
+
+    def __repr__(self):
+        return self.__class__.__name__ + '(' + str(self.num_features) + ')'
+
