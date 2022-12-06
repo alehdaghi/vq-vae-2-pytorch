@@ -102,8 +102,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 (
                     f"epoch: {epoch + 1}; mse: {recon_loss.item():.5f}; "
                     f"lat: {latent_loss.item():.3f}; avg mse: {mse_sum / mse_n:.5f}; "
-                    f"id: {id_err:.3f}; avg id: {id_sum / mse_n:.3f}; "
-                    f"feat: {feat_err:.3f}; avg feat: {feat_sum / mse_n:.5f}; "
+                    f"id: {id_err:.3f}; avg id: {id_sum / (i+1):.3f}; "
+                    f"feat: {feat_err:.3f}; avg feat: {feat_sum / (i+1):.5f}; "
                     f"lr: {lr:.5f}"
                 )
             )
