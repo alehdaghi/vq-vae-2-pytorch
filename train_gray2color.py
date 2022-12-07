@@ -69,6 +69,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         # adain_params = model.mlp(feat.detach())
         # assign_adain_params(adain_params[bs:], model.adaptor)
         w = torch.rand(bs, 3).cuda() + 0.01
+        w = w / w.sum(dim=1, keepdim=True)
         gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
 
         gray_content, _  = model.encode_content(gray)
