@@ -53,38 +53,55 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         bs = img1.size(0)
 
-        model.person_id.requires_grad_(True)
-        feat, score = model.person_id(xRGB = None, xIR=img2, modal=2)
-        loss_id_real = torch.nn.functional.cross_entropy(score, label2)
-        loss_triplet, _ = triplet_criterion(feat, label2)
-        var  = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).var(dim=1)
-        mean = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).mean(dim=1)
+        # model.person_id.requires_grad_(True)
 
-        loss_Re = loss_id_real + loss_triplet + var.mean()
-        optimizer_reid.zero_grad()
-        loss_Re.backward()
-        optimizer_reid.step()
+        # feat, score, feat2d, actMap = model.encode_person(img1)
+        feat2d = model.encode_style(img1)
 
-        model.person_id.requires_grad_(False)
+        # loss_id_real = torch.nn.functional.cross_entropy(score, label1)
+        # loss_triplet, _ = triplet_criterion(feat, label1)
+        # var  = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).var(dim=1)
+        # mean = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).mean(dim=1)
+        # loss_Re = loss_id_real + loss_triplet + var.mean()
+
+        # model.person_id.requires_grad_(False)
 
         # adain_params = model.mlp(feat.detach())
         # assign_adain_params(adain_params[bs:], model.adaptor)
-        rgb_fake , latent_loss, ir_fake = model.adaptor(img1)
-        feat_ir_fake, score_ir_fake = model.person_id(xRGB=None, xIR=ir_fake, modal=2)
+        w = torch.rand(bs, 3).cuda() + 0.01
+        gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
 
-        mean_fake = einops.rearrange(feat_ir_fake, '(n p) ... -> n p ...', p=args.num_pos).mean(dim=1)
+        gray_content, _  = model.encode_content(gray)
+        gray_content = model.fuse(gray_content, feat2d)
 
-        loss_id_fake = torch.nn.functional.cross_entropy(score_ir_fake, label2)
-        loss_kl_fake = 100 * torch.nn.functional.kl_div(score_ir_fake.log_softmax(dim=1), score.detach().softmax(dim=1))
-        feat_loss = criterion(mean.detach(), mean_fake)
+        rgb_content, latent_loss = model.encode_content(img1)
+
+
+        rgb_reconst = model.decode(rgb_content)
+        rgb_fake = model.decode(gray_content)
+
+        # feat_ir_fake, score_ir_fake = model.person_id(xRGB=None, xIR=ir_fake, modal=2)
+
+        # mean_fake = einops.rearrange(feat_ir_fake, '(n p) ... -> n p ...', p=args.num_pos).mean(dim=1)
+
+        # loss_id_fake = torch.nn.functional.cross_entropy(score_ir_fake, label2)
+        # loss_kl_fake = 100 * torch.nn.functional.kl_div(score_ir_fake.log_softmax(dim=1), score.detach().softmax(dim=1))
+        # feat_loss = criterion(mean.detach(), mean_fake)
 
         # assign_adain_params(adain_params[:bs], model.adaptor)
 
-        recon_loss = criterion(rgb_fake, img1)
+        recon_loss = criterion(rgb_reconst, img1) + criterion(rgb_fake, img1)
+        recon_loss_feat = criterion(gray_content, rgb_content)
         latent_loss = latent_loss.mean()
-        loss_G = (recon_loss + latent_loss_weight * latent_loss) + loss_id_fake + feat_loss + loss_kl_fake
+        loss_G = (recon_loss_feat + recon_loss + latent_loss_weight * latent_loss) #+ loss_id_fake + feat_loss + loss_kl_fake
+
+
         optimizer.zero_grad()
+        # optimizer_reid.zero_grad()
+        # (loss_Re + loss_G).backward()
         loss_G.backward()
+        # optimizer_reid.step()
+
 
         if scheduler is not None:
             scheduler.step()
@@ -99,9 +116,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             mse_sum += part["mse_sum"]
             mse_n += part["mse_n"]
 
-        id_err = loss_id_fake.item() + loss_id_real.item() + loss_triplet.item() + loss_kl_fake
+        id_err = 0#loss_id_fake.item() + loss_id_real.item() + loss_triplet.item() + loss_kl_fake
         id_sum += id_err
-        feat_err = feat_loss.item()
+        feat_err = recon_loss_feat.item()
         feat_sum += feat_err
 
         if dist.is_primary():
@@ -123,15 +140,15 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 index = np.random.choice(np.arange(bs), min(bs, sample_size))
 
                 sample = img1[index]
+                fake_recon = rgb_reconst[index]
                 fake_rgb = rgb_fake[index]
-                fake_ir = ir_fake[index]
-                real_ir = img2[index]
+                real_ir = gray[index]
 
                 # with torch.no_grad():
                 #     out, _ = model(sample)
 
                 utils.save_image(
-                    invTrans(torch.cat([sample, fake_rgb, real_ir, fake_ir], 0)),
+                    invTrans(torch.cat([sample, fake_recon, real_ir, fake_rgb], 0)),
                     f"sample/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(sample),
                     # normalize=True,
@@ -182,7 +199,7 @@ def main(args):
             print('==> no checkpoint found at {}'.format(args.resume))
 
     optimizer_reID = optim.Adam(model.person_id.parameters(), lr=args.lr)
-    optimizer = optim.Adam(list(model.adaptor.parameters()) , lr=args.lr)
+    optimizer = optim.Adam(list(model.parameters()) , lr=args.lr)
 
     scheduler = None
     if args.sched == "cycle":

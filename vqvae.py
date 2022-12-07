@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.nn.utils import spectral_norm
 
 import distributed as dist_fn
 
@@ -208,12 +209,16 @@ class VQVAE(nn.Module):
             stride=4,
         )
 
+        self.embed_dim = 2 * embed_dim
+
 
 
     def forward(self, input):
         quant_t, quant_b, diff, _, _ = self.encode(input)
-        dec, dec2 = self.decode(quant_t, quant_b)
-        return dec, diff, dec2
+        upsample_t = self.upsample_t(quant_t)
+        quant = torch.cat([upsample_t, quant_b], 1)
+        dec = self.decode(quant)
+        return dec, diff
 
     def encode(self, input):
         enc_b = self.enc_b(input)
@@ -234,12 +239,14 @@ class VQVAE(nn.Module):
 
         return quant_t, quant_b, diff_t + diff_b, id_t, id_b
 
-    def decode(self, quant_t, quant_b):
-        upsample_t = self.upsample_t(quant_t)
-        quant = torch.cat([upsample_t, quant_b], 1)
-        dec = self.dec(quant)
-        dec2 = self.dec_ir(quant.detach()).expand(-1, 3, -1, -1)
-        return dec, dec2
+    # def decode(self, quant_t, quant_b):
+    #
+    #     dec = self.dec(quant)
+    #     dec2 = self.dec_ir(quant.detach()).expand(-1, 3, -1, -1)
+    #     return dec, dec2
+
+    def decode(self, quant):
+        return self.dec(quant)
 
     def decode_code(self, code_t, code_b):
         quant_t = self.quantize_t.embed_code(code_t)
@@ -282,4 +289,3 @@ class AdaptiveInstanceNorm2d(nn.Module):
 
     def __repr__(self):
         return self.__class__.__name__ + '(' + str(self.num_features) + ')'
-

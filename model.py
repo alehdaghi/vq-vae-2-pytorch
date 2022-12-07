@@ -5,9 +5,21 @@ from einops import rearrange
 from torch.nn import init
 from torch.nn import functional as F
 import copy
+from torch.nn.utils import spectral_norm
 
-from vqvae import VQVAE
 
+from vqvae import VQVAE, Encoder
+
+
+def compute_mask(feat):
+    batch_size, fdim, h, w = feat.shape
+    norms = torch.norm(feat, p=2, dim=1).view(batch_size, h * w)
+
+    norms -= norms.min(dim=-1, keepdim=True)[0]
+    norms /= norms.max(dim=-1, keepdim=True)[0] + 1e-12
+    mask = norms.view(batch_size, 1, h, w)
+
+    return mask.detach()
 
 class Normalize(nn.Module):
     def __init__(self, power=2):
@@ -117,13 +129,13 @@ class embed_net(nn.Module):
         # x3 = x
         # x = self.base_resnet.resnet_part2[2](x)  # layer4
 
-        # person_mask = self.compute_mask(x)
+        person_mask = compute_mask(x)
         feat_pool = self.gl_pool(x, self.gm_pool)
         feat = self.bottleneck(feat_pool)
         # feat = self.drop(feat)
 
         if with_feature:
-            return feat_pool, self.classifier(feat), x #, person_mask
+            return feat_pool, self.classifier(feat), x ,person_mask
 
         if not self.training:
             return self.l2norm(feat), self.l2norm(feat_pool)
@@ -223,7 +235,128 @@ class ModelAdaptive(nn.Module):
     def __init__(self, class_num, no_local='on', gm_pool='on', arch='resnet18', camera_num=6):
         super(ModelAdaptive, self).__init__()
         self.person_id = embed_net(class_num, no_local, gm_pool, arch)
+
         # self.camera_id = Camera_net(camera_num, arch)
+        self.fusion = Non_local(128, 1)
         self.adaptor = VQVAE()
+
+        self.style_dim = 128
+
+        self.encoder_s = nn.Sequential(Encoder(3, self.style_dim, 3, 32, stride=2),
+                                       Encoder(self.style_dim, self.style_dim, 3, 32, stride=2))
+
+        self.conv1 = spectral_norm(nn.Conv2d(self.style_dim, self.style_dim, kernel_size=1, stride=1, padding=0))
+        self.conv2 = spectral_norm(
+            nn.Conv2d(self.style_dim, self.style_dim, kernel_size=1, stride=1, padding=0))
+
+        self.resblocks = nn.Sequential(
+            ResidualBlock(self.style_dim, self.style_dim),
+            ResidualBlock(self.style_dim, self.style_dim),
+        )
+
+        # self.upsample_t = nn.Sequential(
+        #     nn.ConvTranspose2d(self.person_id.pool_dim, self.person_id.pool_dim, 4, stride=2, padding=1)
+        # )
+
         # self.mlp = MLP(self.person_id.pool_dim, get_num_adain_params(self.adaptor), 256, 1, norm='none', activ='relu')
         # self.discriminator = Discriminator()
+
+    def encode_person(self, rgb):
+        feat, score, feat2d, actMap = self.person_id(xRGB=rgb, xIR=None, modal=1, with_feature=True)
+        return feat, score, feat2d, actMap
+
+    def encode_style(self, rgb):
+        return self.encoder_s(rgb)
+
+
+    def encode_content(self, img):
+        quant_t, quant_b, diff, _, _ = self.adaptor.encode(img)
+        upsample_t = self.adaptor.upsample_t(quant_t)
+        quant = torch.cat([upsample_t, quant_b], 1)
+        return quant, diff
+
+    def fuse(self, content, style):
+
+        c = self.conv1(content)
+        f = self.fusion(c, style)
+        f = self.resblocks(f) + f
+        newC = self.conv2(f)
+        return newC
+
+    def decodeWithStyle(self, content, style):
+        self.fusion(content, style)
+
+    def decodeWithoutStyle(self, content):
+        return self.adaptor.decode(content)
+
+    def decode(self, content):
+        return self.adaptor.decode(content)
+
+
+class ResidualBlock(nn.Module):
+    """Residual Block with instance normalization."""
+    def __init__(self, dim_in, dim_out):
+        super(ResidualBlock, self).__init__()
+        self.main = nn.Sequential(
+            spectral_norm(nn.Conv2d(dim_in, dim_out, kernel_size=3, stride=1, padding=1, bias=False)),
+            nn.InstanceNorm2d(dim_out, affine=True),
+            nn.ReLU(inplace=True),
+            spectral_norm(nn.Conv2d(dim_out, dim_out, kernel_size=3, stride=1, padding=1, bias=False)),
+            nn.InstanceNorm2d(dim_out, affine=True))
+
+    def forward(self, x):
+        return x + self.main(x)
+
+class Non_local(nn.Module):
+    def __init__(self, in_channels, reduc_ratio=4):
+        super(Non_local, self).__init__()
+
+        self.in_channels = in_channels
+        self.inter_channels = in_channels//reduc_ratio
+
+        self.g = nn.Sequential(
+            nn.Conv2d(in_channels=self.in_channels, out_channels=self.inter_channels, kernel_size=1, stride=1,
+                    padding=0),
+        )
+
+        self.W = nn.Sequential(
+            nn.Conv2d(in_channels=self.inter_channels, out_channels=self.in_channels,
+                    kernel_size=1, stride=1, padding=0),
+            nn.BatchNorm2d(self.in_channels),
+        )
+        nn.init.constant_(self.W[1].weight, 0.0)
+        nn.init.constant_(self.W[1].bias, 0.0)
+
+
+
+        self.theta = nn.Conv2d(in_channels=self.in_channels, out_channels=self.inter_channels,
+                             kernel_size=1, stride=1, padding=0)
+
+        self.phi = nn.Conv2d(in_channels=self.in_channels, out_channels=self.inter_channels,
+                           kernel_size=1, stride=1, padding=0)
+
+    def forward(self, c, s):
+        '''
+                :param x: (b, c, t, h, w)
+                :return:
+                '''
+
+        batch_size = c.size(0)
+        g_s = self.g(s).view(batch_size, self.inter_channels, -1)
+        g_s = g_s.permute(0, 2, 1)
+
+        theta_c = self.theta(c).view(batch_size, self.inter_channels, -1)
+        theta_c = theta_c.permute(0, 2, 1)
+        phi_s = self.phi(s).view(batch_size, self.inter_channels, -1)
+        f = torch.matmul(theta_c, phi_s)
+        N = f.size(-1)
+        f_div_C = torch.nn.functional.softmax(f / N, dim=-1)
+        # f_div_C = f / N
+
+        y = torch.matmul(f_div_C, g_s)
+        y = y.permute(0, 2, 1).contiguous()
+        y = y.view(batch_size, self.inter_channels, *c.size()[2:])
+        W_y = self.W(y)
+        z = W_y + s
+
+        return z
