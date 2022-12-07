@@ -74,7 +74,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         recon_loss = criterion(rgb_fake, img1)
         latent_loss = latent_loss.mean()
-        loss_G = 3 * (recon_loss + latent_loss_weight * latent_loss) + loss_id_fake + feat_loss
+        loss_G = (recon_loss + latent_loss_weight * latent_loss) + loss_id_fake + feat_loss
         optimizer.zero_grad()
         loss_G.backward()
 
