@@ -58,6 +58,13 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         # feat, score, feat2d, actMap = model.encode_person(img1)
         feat2d = model.encode_style(img1)
 
+        ids = np.arange(bs).reshape(-1, args.num_pos)
+        list(map(np.random.shuffle, ids))
+        ids = ids.reshape(-1)
+
+        img1_other = img1[ids]
+        feat2d_other = model.encode_style(img1_other)
+
         # loss_id_real = torch.nn.functional.cross_entropy(score, label1)
         # loss_triplet, _ = triplet_criterion(feat, label1)
         # var  = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).var(dim=1)
@@ -72,14 +79,19 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         w = w / w.sum(dim=1, keepdim=True)
         gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
 
-        gray_content, _  = model.encode_content(gray)
-        gray_content = model.fuse(gray_content, feat2d)
+
 
         rgb_content, latent_loss = model.encode_content(img1)
-
-
         rgb_reconst = model.decode(rgb_content)
+
+        gray_content, _ = model.encode_content(gray)
+
+        gray_content = model.fuse(gray_content, feat2d)
         rgb_fake = model.decode(gray_content)
+
+        gray_content_other = model.fuse(gray_content, feat2d_other)
+        rgb_fake_other = model.decode(gray_content_other)
+
 
         # feat_ir_fake, score_ir_fake = model.person_id(xRGB=None, xIR=ir_fake, modal=2)
 
@@ -91,7 +103,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         # assign_adain_params(adain_params[:bs], model.adaptor)
 
-        recon_loss = criterion(rgb_reconst, img1) + criterion(rgb_fake, img1)
+        recon_loss = criterion(rgb_reconst, img1) + criterion(rgb_fake, img1) + criterion(rgb_fake_other, img1)
         recon_loss_feat = criterion(gray_content, rgb_content)
         latent_loss = latent_loss.mean()
         loss_G = (recon_loss_feat + recon_loss + latent_loss_weight * latent_loss) #+ loss_id_fake + feat_loss + loss_kl_fake
@@ -145,11 +157,14 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 fake_rgb = rgb_fake[index]
                 real_ir = gray[index]
 
+                fake_rgb_other = rgb_fake_other[index]
+
+
                 # with torch.no_grad():
                 #     out, _ = model(sample)
 
                 utils.save_image(
-                    invTrans(torch.cat([sample, fake_recon, real_ir, fake_rgb], 0)),
+                    invTrans(torch.cat([sample, fake_recon, real_ir, img1_other[index] ,fake_rgb_other], 0)),
                     f"sample/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(sample),
                     # normalize=True,
