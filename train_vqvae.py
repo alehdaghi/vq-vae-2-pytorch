@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch import nn, optim
 from torch.utils.data import DataLoader
+import einops
 
 from torchvision import datasets, transforms, utils
 
@@ -38,6 +39,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
     id_sum = 0
     feat_sum = 0
+
+
     for i, (img1, img2, label1, label2, camera1, camera2) in enumerate(loader):
         model.zero_grad()
 
@@ -54,8 +57,10 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         feat, score = model.person_id(xRGB = None, xIR=img2, modal=2)
         loss_id_real = torch.nn.functional.cross_entropy(score, label2)
         loss_triplet, _ = triplet_criterion(feat, label2)
+        var  = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).var(dim=1)
+        mean = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).mean(dim=1)
 
-        loss_Re = loss_id_real + loss_triplet
+        loss_Re = loss_id_real + loss_triplet + var.mean()
         optimizer_reid.zero_grad()
         loss_Re.backward()
         optimizer_reid.step()
@@ -67,14 +72,17 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         rgb_fake , latent_loss, ir_fake = model.adaptor(img1)
         feat_ir_fake, score_ir_fake = model.person_id(xRGB=None, xIR=ir_fake, modal=2)
 
+        mean_fake = einops.rearrange(feat_ir_fake, '(n p) ... -> n p ...', p=args.num_pos).mean(dim=1)
+
         loss_id_fake = torch.nn.functional.cross_entropy(score_ir_fake, label2)
-        feat_loss = criterion(feat.detach(), feat_ir_fake)
+        loss_kl_fake = 100 * torch.nn.functional.kl_div(score_ir_fake.log_softmax(dim=1), score.detach().softmax(dim=1))
+        feat_loss = criterion(mean.detach(), mean_fake)
 
         # assign_adain_params(adain_params[:bs], model.adaptor)
 
         recon_loss = criterion(rgb_fake, img1)
         latent_loss = latent_loss.mean()
-        loss_G = (recon_loss + latent_loss_weight * latent_loss) + loss_id_fake + feat_loss
+        loss_G = (recon_loss + latent_loss_weight * latent_loss) + loss_id_fake + feat_loss + loss_kl_fake
         optimizer.zero_grad()
         loss_G.backward()
 
@@ -91,7 +99,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             mse_sum += part["mse_sum"]
             mse_n += part["mse_n"]
 
-        id_err = loss_id_fake.item() + loss_id_real.item() + loss_triplet.item()
+        id_err = loss_id_fake.item() + loss_id_real.item() + loss_triplet.item() + loss_kl_fake
         id_sum += id_err
         feat_err = feat_loss.item()
         feat_sum += feat_err
@@ -102,9 +110,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             loader.set_description(
                 (
                     f"epoch: {epoch + 1}; mse: {recon_loss.item():.5f}; "
-                    f"lat: {latent_loss.item():.3f}; avg mse: {mse_sum / mse_n:.5f}; "
-                    f"id: {id_err:.3f}; avg id: {id_sum / (i+1):.3f}; "
-                    f"feat: {feat_err:.3f}; avg feat: {feat_sum / (i+1):.5f}; "
+                    f"lat: {latent_loss.item():.3f}({mse_sum / mse_n:.5f}); "
+                    f"id: {id_err:.3f}({id_sum / (i+1):.3f}); "
+                    f"feat: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
                     f"lr: {lr:.5f}"
                 )
             )
