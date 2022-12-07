@@ -78,7 +78,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         w = torch.rand(bs, 3).cuda() + 0.01
         w = w / w.sum(dim=1, keepdim=True)
         gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
-
+        # gray = img2
 
 
         rgb_content, latent_loss = model.encode_content(img1)
@@ -86,8 +86,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         gray_content, _ = model.encode_content(gray)
 
-        gray_content = model.fuse(gray_content, feat2d)
-        rgb_fake = model.decode(gray_content)
+        gray_content_itself = model.fuse(gray_content, feat2d)
+        rgb_fake = model.decode(gray_content_itself)
 
         gray_content_other = model.fuse(gray_content, feat2d_other)
         rgb_fake_other = model.decode(gray_content_other)
@@ -150,7 +150,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             if i % 100 == 0:
                 # model.eval()
 
-                index = np.random.choice(np.arange(bs), min(bs, sample_size))
+                index = np.random.choice(np.arange(bs), min(bs, sample_size), replace=False)
 
                 sample = img1[index]
                 fake_recon = rgb_reconst[index]
@@ -164,7 +164,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 #     out, _ = model(sample)
 
                 utils.save_image(
-                    invTrans(torch.cat([sample, fake_recon, real_ir, img1_other[index] ,fake_rgb_other], 0)),
+                    invTrans(torch.cat([sample, fake_rgb, real_ir, img1_other[index] ,fake_rgb_other], 0)),
                     f"sample/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(sample),
                     # normalize=True,
