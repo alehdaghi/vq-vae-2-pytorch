@@ -179,7 +179,7 @@ def main(args):
 
     if args.distributed:
         model = nn.parallel.DistributedDataParallel(
-            vq_vae,
+            model,
             device_ids=[dist.get_local_rank()],
             output_device=dist.get_local_rank(),
         )
@@ -189,7 +189,7 @@ def main(args):
         if os.path.isfile(model_path):
             print('==> loading checkpoint {}'.format(args.resume))
             checkpoint = torch.load(model_path)
-            vq_vae.load_state_dict(checkpoint)
+            model.load_state_dict(checkpoint)
             print('==> loaded checkpoint {} (epoch)'
                   .format(args.resume))
         else:
