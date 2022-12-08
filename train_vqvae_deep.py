@@ -196,7 +196,7 @@ def main(args):
             print('==> no checkpoint found at {}'.format(args.resume))
 
     optimizer_reID = optim.Adam(model.person_id.parameters(), lr=args.lr)
-    optimizer = optim.Adam(list(vq_vae.parameters()) , lr=args.lr)
+    optimizer = optim.Adam(list(model.parameters()) , lr=args.lr)
 
     scheduler = None
     if args.sched == "cycle":
