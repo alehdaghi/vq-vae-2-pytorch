@@ -14,8 +14,9 @@ from tqdm import tqdm
 
 from data_loader import SYSUData
 from loss import TripletLoss
+from model import ModelAdaptive, ModelAdaptive_Deep
 
-from vqvae_deep import VQVAE
+from vqvae_deep import VQVAE_Deep as VQVAE
 from scheduler import CycleScheduler
 import distributed as dist
 
@@ -23,6 +24,14 @@ invTrans = transforms.Compose([
     transforms.Normalize(mean=[0., 0., 0.], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]),
     transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
 ])
+
+def random_pair(args):
+    l = np.arange(args.batch_size) * args.num_pos
+    l = l[:, None]
+    r = np.random.randint(1, args.num_pos, args.batch_size).reshape(-1, 1)
+    ids = (np.tile(np.arange(args.num_pos), args.batch_size).reshape(-1, args.num_pos) + r) % args.num_pos + l
+    ids = ids.reshape(-1)
+    return ids
 
 def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     if dist.is_primary():
@@ -42,7 +51,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
 
     for i, (img1, img2, label1, label2, camera1, camera2) in enumerate(loader):
-        model.zero_grad()
+        # vq_vae, person_id =  model['vq_vae'], model['person_id']
 
         img1 = img1.to(device)
         img2 = img2.to(device)
@@ -53,17 +62,37 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         bs = img1.size(0)
 
+        feat, score, feat2d, actMap = model.encode_person(img1)
 
-        rgb_fake, latent_loss = model(img1)
+        ids = random_pair(args)
+
+        img1_other = img1[ids]
+        feat2d_other = feat2d[ids]
 
         # assign_adain_params(adain_params[:bs], model.adaptor)
 
-        recon_loss = criterion(rgb_fake, img1)
+        w = torch.rand(bs, 3).cuda() + 0.01
+        w = w / w.sum(dim=1, keepdim=True)
+        gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
+
+        rgb_content, latent_loss = model.encode_content(img1)
+        rgb_reconst = model.decode(rgb_content)
+
+        gray_content, _ = model.encode_content(gray)
+
+        gray_content_itself = model.fuse(gray_content, feat2d)
+        rgb_fake = model.decode(gray_content_itself)
+
+        gray_content_other = model.fuse(gray_content, feat2d_other)
+        rgb_fake_other = model.decode(gray_content_other)
+
+        recon_loss = criterion(rgb_reconst, img1) + criterion(rgb_fake, img1) + criterion(rgb_fake_other, img1)
+        recon_loss_feat = criterion(gray_content_itself, rgb_content) + criterion(gray_content_other, rgb_content)
         latent_loss = latent_loss.mean()
-        loss_G = (recon_loss + latent_loss_weight * latent_loss) #+ loss_id_fake + feat_loss + loss_kl_fake
+        loss_G = (recon_loss_feat + recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
+
         optimizer.zero_grad()
         loss_G.backward()
-
         if scheduler is not None:
             scheduler.step()
         optimizer.step()
@@ -79,7 +108,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         id_err = 0 #loss_id_fake.item() + loss_id_real.item() + loss_triplet.item() + loss_kl_fake
         id_sum += id_err
-        feat_err = 0#feat_loss.item()
+        feat_err = recon_loss_feat.item()
         feat_sum += feat_err
 
         if dist.is_primary():
@@ -101,22 +130,25 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 index = np.random.choice(np.arange(bs), min(bs, sample_size), replace=False)
 
                 sample = img1[index]
+                fake_recon = rgb_reconst[index]
                 fake_rgb = rgb_fake[index]
-                # fake_ir = ir_fake[index]
-                real_ir = img2[index]
+                real_ir = gray[index]
+
+                fake_rgb_other = rgb_fake_other[index]
 
                 # with torch.no_grad():
                 #     out, _ = model(sample)
+                # model.train()
 
                 utils.save_image(
-                    invTrans(torch.cat([sample, fake_rgb], 0)),
-                    f"sample-deep/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
+                    invTrans(torch.cat([sample, fake_rgb, real_ir, img1_other[index], fake_rgb_other], 0)),
+                    f"sample-deep-transfer/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(sample),
                     # normalize=True,
                     range=(-1, 1),
                 )
 
-                model.train()
+
 
 
 def main(args):
@@ -139,11 +171,15 @@ def main(args):
 
 
 
-    model = VQVAE().to(device)
+    vq_vae = VQVAE().to(device)
+    model = ModelAdaptive_Deep(dataset.num_class, vq_vae).to(device)
+
+
+
 
     if args.distributed:
         model = nn.parallel.DistributedDataParallel(
-            model,
+            vq_vae,
             device_ids=[dist.get_local_rank()],
             output_device=dist.get_local_rank(),
         )
@@ -153,14 +189,14 @@ def main(args):
         if os.path.isfile(model_path):
             print('==> loading checkpoint {}'.format(args.resume))
             checkpoint = torch.load(model_path)
-            model.load_state_dict(checkpoint)
+            vq_vae.load_state_dict(checkpoint)
             print('==> loaded checkpoint {} (epoch)'
                   .format(args.resume))
         else:
             print('==> no checkpoint found at {}'.format(args.resume))
 
-    optimizer_reID = None #optim.Adam(model.person_id.parameters(), lr=args.lr)
-    optimizer = optim.Adam(list(model.parameters()) , lr=args.lr)
+    optimizer_reID = optim.Adam(model.person_id.parameters(), lr=args.lr)
+    optimizer = optim.Adam(list(vq_vae.parameters()) , lr=args.lr)
 
     scheduler = None
     if args.sched == "cycle":
@@ -179,9 +215,9 @@ def main(args):
         )
 
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
-        torch.save(model.state_dict(), f"checkpoint-deep/vqvae_last.pt")
+        torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_last.pt")
         if i % 10 == 0 and dist.is_primary():
-            torch.save(model.state_dict(), f"checkpoint-deep/vqvae_{str(i + 1).zfill(3)}.pt")
+            torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_{str(i + 1).zfill(3)}.pt")
 
 
 if __name__ == "__main__":

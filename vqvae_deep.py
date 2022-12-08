@@ -183,7 +183,7 @@ class Decoder(nn.Module):
         return self.blocks(input)
 
 
-class VQVAE(nn.Module):
+class VQVAE_Deep(nn.Module):
     def __init__(
             self,
             in_channel=3,
@@ -225,7 +225,7 @@ class VQVAE(nn.Module):
         upsample_t = self.upsample_t(quant_t)
         quant = torch.cat([upsample_t, quant_b], 1)
         dec = self.decode(quant)
-        return dec, diff
+        return dec, diff, quant
 
     def encode(self, input):
         enc_b = self.enc_b(input)

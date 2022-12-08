@@ -9,6 +9,7 @@ from torch.nn.utils import spectral_norm
 
 
 from vqvae import VQVAE, Encoder
+from vqvae_deep import VQVAE_Deep
 
 
 def compute_mask(feat):
@@ -232,7 +233,7 @@ class LinearBlock(nn.Module):
         return out
 
 class ModelAdaptive(nn.Module):
-    def __init__(self, class_num, no_local='on', gm_pool='on', arch='resnet18', camera_num=6):
+    def __init__(self, class_num=395, no_local='on', gm_pool='on', arch='resnet18', camera_num=6):
         super(ModelAdaptive, self).__init__()
         self.person_id = embed_net(class_num, no_local, gm_pool, arch)
 
@@ -360,3 +361,69 @@ class Non_local(nn.Module):
         z = W_y + s
 
         return z
+
+
+class ModelAdaptive_Deep(nn.Module):
+    def __init__(self, class_num=395, adaptor=None, arch='resnet18'):
+        super(ModelAdaptive_Deep, self).__init__()
+        self.person_id = embed_net(class_num, 'off', 'off', arch)
+
+        # self.camera_id = Camera_net(camera_num, arch)
+        self.fusion1 = Non_local(512, 2)
+        self.fusion2 = Non_local(512, 2)
+
+        self.adaptor = VQVAE_Deep() if adaptor is None else adaptor
+
+
+
+        self.style_dim = 512
+
+
+        self.conv1 = spectral_norm(nn.Conv2d(self.style_dim, self.style_dim, kernel_size=1, stride=2, padding=0))
+        self.conv2 = spectral_norm(
+            nn.ConvTranspose2d(self.style_dim, self.style_dim, kernel_size=4, stride=2, padding=1))
+
+        self.resblocks = nn.Sequential(
+            ResidualBlock(self.style_dim, self.style_dim),
+            ResidualBlock(self.style_dim, self.style_dim),
+        )
+
+        # self.upsample_t = nn.Sequential(
+        #     nn.ConvTranspose2d(self.person_id.pool_dim, self.person_id.pool_dim, 4, stride=2, padding=1)
+        # )
+
+        # self.mlp = MLP(self.person_id.pool_dim, get_num_adain_params(self.adaptor), 256, 1, norm='none', activ='relu')
+        # self.discriminator = Discriminator()
+
+    def encode_person(self, rgb):
+        feat, score, feat2d, actMap = self.person_id(xRGB=rgb, xIR=None, modal=1, with_feature=True)
+        return feat, score, feat2d, actMap
+
+    def encode_style(self, rgb):
+        return self.encoder_s(rgb)
+
+
+    def encode_content(self, img):
+        quant_t, quant_b, diff, _, _ = self.adaptor.encode(img)
+        upsample_t = self.adaptor.upsample_t(quant_t)
+        quant = torch.cat([upsample_t, quant_b], 1)
+        return quant, diff
+
+    def fuse(self, content, style):
+
+        c = self.conv1(content)
+        f = self.fusion1(c, style)
+        f = self.resblocks(f) + f
+        f = self.fusion2(f, style)
+
+        newC = self.conv2(f)
+        return newC
+
+    def decodeWithStyle(self, content, style):
+        self.fusion(content, style)
+
+    def decodeWithoutStyle(self, content):
+        return self.adaptor.decode(content)
+
+    def decode(self, content):
+        return self.adaptor.decode(content)
