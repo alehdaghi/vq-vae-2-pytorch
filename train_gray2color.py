@@ -58,9 +58,17 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         # feat, score, feat2d, actMap = model.encode_person(img1)
         feat2d = model.encode_style(img1)
 
-        ids = np.arange(bs).reshape(-1, args.num_pos)
-        list(map(np.random.shuffle, ids))
+        # ids = np.arange(bs).reshape(-1, args.num_pos)
+        # list(map(np.random.shuffle, ids))
+
+        l = np.arange(args.batch_size) * args.num_pos
+        l = l[:, None]
+        r = np.random.randint(1, args.num_pos, args.batch_size).reshape(-1, 1)
+        ids = (np.tile(np.arange(args.num_pos), args.batch_size).reshape(-1, args.num_pos) + r) % args.num_pos + l
         ids = ids.reshape(-1)
+
+
+
 
         img1_other = img1[ids]
         feat2d_other = model.encode_style(img1_other)
@@ -104,7 +112,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         # assign_adain_params(adain_params[:bs], model.adaptor)
 
         recon_loss = criterion(rgb_reconst, img1) + criterion(rgb_fake, img1) + criterion(rgb_fake_other, img1)
-        recon_loss_feat = criterion(gray_content, rgb_content)
+        recon_loss_feat = criterion(gray_content_itself, rgb_content)
         latent_loss = latent_loss.mean()
         loss_G = (recon_loss_feat + recon_loss + latent_loss_weight * latent_loss) #+ loss_id_fake + feat_loss + loss_kl_fake
 
