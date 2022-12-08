@@ -243,6 +243,7 @@ def main(args):
 
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
 
+        torch.save(model.state_dict(), f"checkpoint/vqvae_last.pt")
         if i % 10 == 0 and dist.is_primary():
             torch.save(model.state_dict(), f"checkpoint/vqvae_{str(i + 1).zfill(3)}.pt")
 
