@@ -110,7 +110,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
                 utils.save_image(
                     invTrans(torch.cat([sample, fake_rgb], 0)),
-                    f"sample/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
+                    f"sample-deep/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(sample),
                     # normalize=True,
                     range=(-1, 1),
@@ -179,9 +179,9 @@ def main(args):
         )
 
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
-
+        torch.save(model.state_dict(), f"checkpoint-deep/vqvae_last.pt")
         if i % 10 == 0 and dist.is_primary():
-            torch.save(model.state_dict(), f"checkpoint/vqvae_{str(i + 1).zfill(3)}.pt")
+            torch.save(model.state_dict(), f"checkpoint-deep/vqvae_{str(i + 1).zfill(3)}.pt")
 
 
 if __name__ == "__main__":
