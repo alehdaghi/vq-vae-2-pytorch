@@ -112,7 +112,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         # assign_adain_params(adain_params[:bs], model.adaptor)
 
         recon_loss = criterion(rgb_reconst, img1) + criterion(rgb_fake, img1) + criterion(rgb_fake_other, img1)
-        recon_loss_feat = criterion(gray_content_itself, rgb_content)
+        recon_loss_feat = criterion(gray_content_itself, rgb_content) + criterion(gray_content_other, rgb_content)
         latent_loss = latent_loss.mean()
         loss_G = (recon_loss_feat + recon_loss + latent_loss_weight * latent_loss) #+ loss_id_fake + feat_loss + loss_kl_fake
 
