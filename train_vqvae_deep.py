@@ -116,8 +116,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
             loader.set_description(
                 (
-                    f"epoch: {epoch + 1}; mse: {recon_loss.item():.5f}; "
-                    f"lat: {latent_loss.item():.3f}({mse_sum / mse_n:.5f}); "
+                    f"epoch: {epoch + 1}; mse: {recon_loss.item():.5f}({mse_sum / mse_n:.5f}); "
+                    f"lat: {latent_loss.item():.3f}; "
                     f"id: {id_err:.3f}({id_sum / (i+1):.3f}); "
                     f"feat: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
                     f"lr: {lr:.5f}"
