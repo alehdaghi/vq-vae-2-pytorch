@@ -75,8 +75,11 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         w = w / w.sum(dim=1, keepdim=True)
         gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
 
+        # gray = img2
+
         rgb_content, latent_loss = model.encode_content(img1)
-        rgb_reconst = model.decode(rgb_content)
+        rgb_content_itself = model.fuse(rgb_content, feat2d)
+        rgb_reconst = model.decode(rgb_content_itself)
 
         gray_content, _ = model.encode_content(gray)
 
@@ -87,7 +90,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         rgb_fake_other = model.decode(gray_content_other)
 
         recon_loss = criterion(rgb_reconst, img1) + criterion(rgb_fake, img1) + criterion(rgb_fake_other, img1)
-        recon_loss_feat = criterion(gray_content_itself, rgb_content) + criterion(gray_content_other, rgb_content)
+        recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
+                          criterion(gray_content_other, rgb_content_itself)
         latent_loss = latent_loss.mean()
         loss_G = (recon_loss_feat + recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
 
