@@ -5,6 +5,7 @@ import os
 import numpy as np
 import torch
 from torch import nn, optim
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import einops
 
@@ -64,6 +65,16 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         feat, score, feat2d, actMap = model.encode_person(img1)
 
+        upMask = F.upsample(actMap, scale_factor=16, mode='bicubic')
+
+        feat, score = model.person_id(xRGB=None, xIR=img2, modal=2)
+        loss_id_real = torch.nn.functional.cross_entropy(score, label2)
+        loss_triplet, _ = triplet_criterion(feat, label2)
+        var = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).var(dim=1)
+        mean = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).mean(dim=1)
+
+        loss_Re = loss_id_real + loss_triplet + var.mean()
+
         ids = random_pair(args)
 
         img1_other = img1[ids]
@@ -89,14 +100,18 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         gray_content_other = model.fuse(gray_content, feat2d_other)
         rgb_fake_other = model.decode(gray_content_other)
 
-        recon_loss = criterion(rgb_reconst, img1) + criterion(rgb_fake, img1) + criterion(rgb_fake_other, img1)
+        maskImg = img1*upMask
+
+        recon_loss = criterion(rgb_reconst*upMask, maskImg) +\
+                     criterion(rgb_fake*upMask, maskImg) +\
+                     criterion(rgb_fake_other*upMask, maskImg)
         recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
                           criterion(gray_content_other, rgb_content_itself)
         latent_loss = latent_loss.mean()
         loss_G = (recon_loss_feat + recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
 
         optimizer.zero_grad()
-        loss_G.backward()
+        (loss_G + loss_Re).backward()
         if scheduler is not None:
             scheduler.step()
         optimizer.step()
@@ -110,7 +125,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             mse_sum += part["mse_sum"]
             mse_n += part["mse_n"]
 
-        id_err = 0 #loss_id_fake.item() + loss_id_real.item() + loss_triplet.item() + loss_kl_fake
+        id_err = loss_Re #loss_id_fake.item() + loss_id_real.item() + loss_triplet.item() + loss_kl_fake
         id_sum += id_err
         feat_err = recon_loss_feat.item()
         feat_sum += feat_err
