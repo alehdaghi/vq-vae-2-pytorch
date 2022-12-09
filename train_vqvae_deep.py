@@ -160,7 +160,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 # model.train()
 
                 utils.save_image(
-                    invTrans(torch.cat([sample, fake_rgb, real_ir, img1_other[index], fake_rgb_other], 0)),
+                    invTrans(torch.cat([sample, fake_rgb, real_ir, img1_other[index], fake_rgb_other, upMask.expand(-1, 3, -1, -1)], 0)),
                     f"sample-deep-transfer/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(sample),
                     # normalize=True,
