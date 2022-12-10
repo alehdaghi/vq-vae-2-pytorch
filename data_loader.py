@@ -1,4 +1,6 @@
+import os
 from functools import reduce
+from random import random
 
 import numpy as np
 import torch
@@ -133,3 +135,87 @@ def GenIdx(train_color_label, train_ir_label):
     pickle.dump(thermal_pos, f)
 
     return list(color_pos.values()), list(thermal_pos.values())
+
+
+class TestData(data.Dataset):
+    def __init__(self, test_img_file, test_label, test_cam, transform=None, img_size = (144,288), colorToGray=False):
+
+        test_image = []
+        ret_test_label,  ret_test_cam = [],[]
+        for i in range(len(test_img_file)):
+            img = Image.open(test_img_file[i])
+            img = img.resize((img_size[0], img_size[1]), Image.ANTIALIAS)
+            pix_array = np.array(img)
+            if colorToGray:
+                #for j in range(9):
+                pix_array = np.stack((SYSUData.rgb2gray(pix_array),)*3, axis=-1)
+                # ret_test_label.append(test_label[i])
+                # ret_test_cam.append(test_cam[i])
+
+            ret_test_cam.append(test_cam[i])
+            ret_test_label.append(test_label[i])
+            test_image.append(pix_array)
+        test_image = np.array(test_image)
+        self.test_image = test_image
+        self.test_label = np.array(ret_test_label)
+        self.test_cam = np.array(ret_test_cam)
+        self.transform = transform
+
+    def __getitem__(self, index):
+        img1,  target1, cam1 = self.test_image[index],  self.test_label[index], self.test_cam[index]
+        img1 = self.transform(img1)
+        return img1, target1, cam1 - 1
+
+    def __len__(self):
+        return len(self.test_image)
+
+
+def process_sysu(data_path, data='query', single_shot=True, mode ='all', file_path='exp/test_id.txt'):
+    cameras = []
+    if data == 'query':
+        if mode == 'all':
+            cameras = ['cam3','cam6']
+        elif mode =='indoor':
+            cameras = ['cam3','cam6']
+        elif mode == 'Vis' or mode == 'Gray': #test unimodal training
+            cameras = ['cam1', 'cam4']
+        elif mode == 'Ir':
+            cameras = ['cam3']
+    else:
+        if mode == 'all':
+            cameras = ['cam1', 'cam2', 'cam4', 'cam5']
+        elif mode == 'indoor':
+            cameras = ['cam1', 'cam2']
+        elif mode == 'Vis' or mode == 'Gray':  # test unimodal training
+            cameras = ['cam2', 'cam5']
+        elif mode == 'Ir':
+            cameras = ['cam6']
+
+    file_path = os.path.join(data_path,file_path)
+    files = []
+
+
+    with open(file_path, 'r') as file:
+        ids = file.read().splitlines()
+        ids = [int(y) for y in ids[0].split(',')]
+        ids = ["%04d" % x for x in ids]
+
+    for id in sorted(ids):
+        for cam in cameras:
+            img_dir = os.path.join(data_path,cam,id)
+            if os.path.isdir(img_dir):
+                new_files = sorted([img_dir+'/'+i for i in os.listdir(img_dir)])
+                if data == 'gallery' and single_shot:
+                    files.append(np.random.choice(new_files))
+                else:
+                    # files_rgb.extend(random.choices(new_files, k = 10))
+                    files.extend(new_files)
+    imgs = []
+    ids = []
+    cams = []
+    for img_path in files:
+        camid, pid = int(img_path[-15]), int(img_path[-13:-9])
+        imgs.append(img_path)
+        ids.append(pid)
+        cams.append(camid)
+    return imgs, np.array(ids), np.array(cams)

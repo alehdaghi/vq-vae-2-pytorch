@@ -16,6 +16,7 @@ from tqdm import tqdm
 from data_loader import SYSUData
 from loss import TripletLoss
 from model import ModelAdaptive, ModelAdaptive_Deep
+from reid_tools import validate
 
 from vqvae_deep import VQVAE_Deep as VQVAE
 from scheduler import CycleScheduler
@@ -67,9 +68,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         upMask = F.upsample(actMap, scale_factor=16, mode='bicubic')
 
-        feat, score = model.person_id(xRGB=None, xIR=img2, modal=2)
-        loss_id_real = torch.nn.functional.cross_entropy(score, label2)
-        loss_triplet, _ = triplet_criterion(feat, label2)
+
+        loss_id_real = torch.nn.functional.cross_entropy(score, label1)
+        loss_triplet, _ = triplet_criterion(feat, label1)
         var = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).var(dim=1)
         mean = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).mean(dim=1)
 
@@ -214,6 +215,9 @@ def main(args):
         else:
             print('==> no checkpoint found at {}'.format(args.resume))
 
+
+
+
     optimizer_reID = optim.Adam(model.person_id.parameters(), lr=args.lr)
     optimizer = optim.Adam(list(model.parameters()) , lr=args.lr)
 
@@ -233,10 +237,15 @@ def main(args):
             dataset, batch_size=loader_batch // args.n_gpu, sampler=sampler, num_workers=args.workers
         )
 
+        if i % 4 == 0:
+            validate(0, model.person_id, args=args)
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_last.pt")
         if i % 10 == 0 and dist.is_primary():
             torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_{str(i + 1).zfill(3)}.pt")
+
+
+
 
 
 if __name__ == "__main__":
