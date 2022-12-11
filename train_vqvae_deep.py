@@ -233,6 +233,7 @@ def main(args):
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i % 4 == 0:
             validate(0, model.person_id, args=args)
+        model.person_id.train()
         torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_last.pt")
         if i % 10 == 0 and dist.is_primary():
             torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_{str(i + 1).zfill(3)}.pt")
