@@ -358,7 +358,7 @@ class Non_local(nn.Module):
         y = y.permute(0, 2, 1).contiguous()
         y = y.view(batch_size, self.inter_channels, *c.size()[2:])
         W_y = self.W(y)
-        z = W_y + s
+        z = W_y
 
         return z
 
