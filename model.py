@@ -358,7 +358,7 @@ class Non_local(nn.Module):
         y = y.permute(0, 2, 1).contiguous()
         y = y.view(batch_size, self.inter_channels, *c.size()[2:])
         W_y = self.W(y)
-        z = W_y
+        z = W_y + c
 
         return z
 
@@ -411,12 +411,11 @@ class ModelAdaptive_Deep(nn.Module):
 
     def fuse(self, content, style):
 
-        c = self.conv1(content)
-        f = self.fusion1(c, style)
+        f = content
+        f = self.fusion1(f, style)
         f = self.resblocks(f) + f
         f = self.fusion2(f, style)
-
-        newC = self.conv2(f)
+        newC = f + content
         return newC
 
     def decodeWithStyle(self, content, style):
