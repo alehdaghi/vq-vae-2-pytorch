@@ -66,7 +66,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         bs = img1.size(0)
 
-        feat, score, feat2d, actMap = model.encode_person(img1)
+        feat, score, feat2d, actMap, feat2d_x3 = model.encode_person(img1)
         m = actMap.view(bs, -1).median(dim=1)[0].view(bs, 1, 1, 1)
         actMap[actMap < m ] = 0
         upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
@@ -92,16 +92,19 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         # gray = img2
 
-        rgb_content, latent_loss = model.encode_content(img1)
-        rgb_content_itself = model.fuse(rgb_content, feat2d * actMap)
+        rgb_b, rgb_t = model.encode_content(img1)
+        rgb_content_itself, latent_loss = model.quantize_content(rgb_b, rgb_t)
         rgb_reconst = model.decode(rgb_content_itself)
 
-        gray_content, _ = model.encode_content(gray)
+        gray_b, gray_t = model.encode_content(gray)
 
-        gray_content_itself = model.fuse(gray_content, feat2d * actMap)
+
+        gray_b, gray_t = model.fuse(gray_b, gray_t, feat2d_x3 * actMap ,feat2d * actMap)
+        gray_content_itself, latent_loss_gray = model.quantize_content(gray_b, gray_t)
         rgb_fake = model.decode(gray_content_itself)
 
-        gray_content_other = model.fuse(gray_content, feat2d_other * actMap[ids])
+        gray_b_other, gray_t_other = model.fuse(gray_b, gray_t, feat2d_x3[ids] * actMap[ids], feat2d[ids] * actMap[ids])
+        gray_content_other, latent_loss_other = model.quantize_content(gray_b_other, gray_t_other)
         rgb_fake_other = model.decode(gray_content_other)
 
         maskImg = img1*upMask
@@ -111,8 +114,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                      criterion(rgb_fake_other*upMask, maskImg)
         recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
                           criterion(gray_content_other, rgb_content_itself)
-        latent_loss = latent_loss.mean()
-        loss_G = ( recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
+        latent_loss = (latent_loss + latent_loss_gray + latent_loss_other).mean()
+        loss_G = (recon_loss_feat +  recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
 
         optimizer.zero_grad()
         (loss_G + loss_Re).backward()
@@ -206,7 +209,7 @@ def main(args):
         if os.path.isfile(model_path):
             print('==> loading checkpoint {}'.format(args.resume))
             checkpoint = torch.load(model_path)
-            model.load_state_dict(checkpoint)
+            model.load_state_dict(checkpoint, strict=False)
             print('==> loaded checkpoint {} (epoch)'
                   .format(args.resume))
         else:

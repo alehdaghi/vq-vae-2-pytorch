@@ -125,18 +125,20 @@ class embed_net(nn.Module):
         elif modal == 3:
             x = self.z_module(xZ)
 
-        x = self.base_resnet(x)  # layer2
+        x3 = self.base_resnet[0:3](x)  # layer2 : layer3
+        x4 = self.base_resnet[3:5](x3)
         # x = self.base_resnet.resnet_part2[1](x)  # layer3
         # x3 = x
         # x = self.base_resnet.resnet_part2[2](x)  # layer4
 
-        person_mask = compute_mask(x)
-        feat_pool = self.gl_pool(x, self.gm_pool)
+        person_mask = compute_mask(x4)
+
+        feat_pool = self.gl_pool(x4, self.gm_pool)
         feat = self.bottleneck(feat_pool)
         # feat = self.drop(feat)
 
         if with_feature:
-            return feat_pool, self.classifier(feat), x ,person_mask
+            return feat_pool, self.classifier(feat), x4 ,person_mask, x3
 
         if not self.training:
             return self.l2norm(feat), self.l2norm(feat_pool)
@@ -263,8 +265,8 @@ class ModelAdaptive(nn.Module):
         # self.discriminator = Discriminator()
 
     def encode_person(self, rgb):
-        feat, score, feat2d, actMap = self.person_id(xRGB=rgb, xIR=None, modal=1, with_feature=True)
-        return feat, score, feat2d, actMap
+        feat, score, feat2d, actMap, x3 = self.person_id(xRGB=rgb, xIR=None, modal=1, with_feature=True)
+        return feat, score, feat2d, actMap, x3
 
     def encode_style(self, rgb):
         return self.encoder_s(rgb)
@@ -369,21 +371,25 @@ class ModelAdaptive_Deep(nn.Module):
         self.person_id = embed_net(class_num, 'off', 'off', arch)
 
         # self.camera_id = Camera_net(camera_num, arch)
-        self.fusion1 = Non_local(512, 2)
-        self.fusion2 = Non_local(512, 2)
+        self.fusion1 = Non_local(256, 1)
+        self.fusion2 = Non_local(256, 1)
 
         self.adaptor = VQVAE_Deep() if adaptor is None else adaptor
 
 
 
-        self.style_dim = 512
+        self.style_dim = 256
 
 
-        self.conv1 = spectral_norm(nn.Conv2d(self.style_dim, self.style_dim, kernel_size=1, stride=2, padding=0))
+        self.conv1 = spectral_norm(nn.Conv2d(512, self.style_dim, kernel_size=1, stride=2, padding=0))
         self.conv2 = spectral_norm(
             nn.ConvTranspose2d(self.style_dim, self.style_dim, kernel_size=4, stride=2, padding=1))
 
-        self.resblocks = nn.Sequential(
+        self.resblocks1 = nn.Sequential(
+            ResidualBlock(self.style_dim, self.style_dim),
+            ResidualBlock(self.style_dim, self.style_dim),
+        )
+        self.resblocks2 = nn.Sequential(
             ResidualBlock(self.style_dim, self.style_dim),
             ResidualBlock(self.style_dim, self.style_dim),
         )
@@ -396,27 +402,29 @@ class ModelAdaptive_Deep(nn.Module):
         # self.discriminator = Discriminator()
 
     def encode_person(self, rgb):
-        feat, score, feat2d, actMap = self.person_id(xRGB=rgb, xIR=None, modal=1, with_feature=True)
-        return feat, score, feat2d, actMap
+        feat, score, feat2d, actMap, x3 = self.person_id(xRGB=rgb, xIR=None, modal=1, with_feature=True)
+        return feat, score, feat2d, actMap, x3
 
     def encode_style(self, rgb):
         return self.encoder_s(rgb)
 
 
     def encode_content(self, img):
-        quant_t, quant_b, diff, _, _ = self.adaptor.encode(img)
+        enc_b, enc_t = self.adaptor.encode(img)
+        return enc_b, enc_t
+
+    def quantize_content(self, enc_b, enc_t):
+        quant_t, quant_b, diff, _, _ = self.adaptor.quantize(enc_b, enc_t)
         upsample_t = self.adaptor.upsample_t(quant_t)
         quant = torch.cat([upsample_t, quant_b], 1)
         return quant, diff
 
-    def fuse(self, content, style):
-
-        f = content
-        f = self.fusion1(f, style)
-        f = self.resblocks(f) + f
-        f = self.fusion2(f, style)
-        newC = f + content
-        return newC
+    def fuse(self, cb, ct, sb, st):
+        f = self.fusion1(cb, sb)
+        cb = self.resblocks1(f) + f + cb
+        f = self.fusion2(ct, self.conv1(st))
+        ct = self.resblocks2(f) + f + ct
+        return cb, ct
 
     def decodeWithStyle(self, content, style):
         self.fusion(content, style)

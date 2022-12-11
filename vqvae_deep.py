@@ -221,7 +221,8 @@ class VQVAE_Deep(nn.Module):
         self.embed_dim = 2 * embed_dim
 
     def forward(self, input):
-        quant_t, quant_b, diff, _, _ = self.encode(input)
+        enc_b, enc_t = self.encode(input)
+        quant_t, quant_b, diff, _, _ = self.quantize(enc_b, enc_t)
         upsample_t = self.upsample_t(quant_t)
         quant = torch.cat([upsample_t, quant_b], 1)
         dec = self.decode(quant)
@@ -230,7 +231,9 @@ class VQVAE_Deep(nn.Module):
     def encode(self, input):
         enc_b = self.enc_b(input)
         enc_t = self.enc_t(enc_b)
+        return enc_b, enc_t
 
+    def quantize(self, enc_b, enc_t):
         quant_t = self.quantize_conv_t(enc_t).permute(0, 2, 3, 1)
         quant_t, diff_t, id_t = self.quantize_t(quant_t)
         quant_t = quant_t.permute(0, 3, 1, 2)
