@@ -21,6 +21,8 @@ from reid_tools import validate
 from vqvae_deep import VQVAE_Deep as VQVAE
 from scheduler import CycleScheduler
 import distributed as dist
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
 
 invTrans = transforms.Compose([
     transforms.Normalize(mean=[0., 0., 0.], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]),
@@ -146,7 +148,6 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
             if i % 100 == 0:
                 # model.eval()
-
                 index = np.random.choice(np.arange(bs), min(bs, sample_size), replace=False)
 
                 sample = img1[index]
@@ -167,9 +168,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                     # normalize=True,
                     range=(-1, 1),
                 )
-
-
-
+    writer.add_scalar("ID_loss/train", id_sum / len(loader), epoch)
+    writer.add_scalar("Rec_loss/train", mse_sum / len(loader), epoch)
+    writer.add_scalar("Feat_loss/train", feat_sum / len(loader), epoch)
 
 def main(args):
     device = "cuda"
@@ -186,16 +187,9 @@ def main(args):
     )
 
     dataset = SYSUData(args.path, transform=transform)
-
     loader_batch = args.batch_size * args.num_pos
-
-
-
     vq_vae = VQVAE().to(device)
     model = ModelAdaptive_Deep(dataset.num_class, vq_vae).to(device)
-
-
-
 
     if args.distributed:
         model = nn.parallel.DistributedDataParallel(
@@ -215,9 +209,6 @@ def main(args):
         else:
             print('==> no checkpoint found at {}'.format(args.resume))
 
-
-
-
     optimizer_reID = optim.Adam(model.person_id.parameters(), lr=args.lr)
     optimizer = optim.Adam(list(model.parameters()) , lr=args.lr)
 
@@ -231,15 +222,17 @@ def main(args):
             warmup_proportion=0.05,
         )
 
-    for i in range(args.epoch):
+
+    for i in range(args.start, args.epoch):
         sampler = dataset.samplize(args.batch_size, args.num_pos)
         loader = DataLoader(
             dataset, batch_size=loader_batch // args.n_gpu, sampler=sampler, num_workers=args.workers
         )
 
+
+        train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i % 4 == 0:
             validate(0, model.person_id, args=args)
-        train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_last.pt")
         if i % 10 == 0 and dist.is_primary():
             torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_{str(i + 1).zfill(3)}.pt")
@@ -261,6 +254,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--size", type=int, default=256)
     parser.add_argument("--epoch", type=int, default=560)
+    parser.add_argument("--start", "-s", type=int, default=0)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--sched", type=str)
     parser.add_argument("--batch_size", type=int, default=4)
