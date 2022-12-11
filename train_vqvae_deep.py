@@ -68,7 +68,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         feat, score, feat2d, actMap, feat2d_x3 = model.encode_person(img1)
         m = actMap.view(bs, -1).median(dim=1)[0].view(bs, 1, 1, 1)
-        actMap[actMap < m ] = 0
+        # actMap[actMap < m ] = 0
         upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
 
@@ -97,8 +97,6 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         rgb_reconst = model.decode(rgb_content_itself)
 
         gray_b, gray_t = model.encode_content(gray)
-
-
         gray_b, gray_t = model.fuse(gray_b, gray_t, feat2d_x3 * actMap ,feat2d * actMap)
         gray_content_itself, latent_loss_gray = model.quantize_content(gray_b, gray_t)
         rgb_fake = model.decode(gray_content_itself)
