@@ -67,8 +67,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         bs = img1.size(0)
 
         feat, score, feat2d, actMap = model.encode_person(img1)
-
-        upMask = F.upsample(actMap, scale_factor=16, mode='bicubic')
+        m = actMap.view(bs, -1).median(dim=1)[0].view(bs, 1, 1, 1)
+        actMap[actMap < m ] = 0
+        upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
 
         loss_id_real = torch.nn.functional.cross_entropy(score, label1)
@@ -92,15 +93,15 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         # gray = img2
 
         rgb_content, latent_loss = model.encode_content(img1)
-        rgb_content_itself = model.fuse(rgb_content, feat2d)
+        rgb_content_itself = model.fuse(rgb_content, feat2d * actMap)
         rgb_reconst = model.decode(rgb_content_itself)
 
         gray_content, _ = model.encode_content(gray)
 
-        gray_content_itself = model.fuse(gray_content, feat2d)
+        gray_content_itself = model.fuse(gray_content, feat2d * actMap)
         rgb_fake = model.decode(gray_content_itself)
 
-        gray_content_other = model.fuse(gray_content, feat2d_other)
+        gray_content_other = model.fuse(gray_content, feat2d_other * actMap[ids])
         rgb_fake_other = model.decode(gray_content_other)
 
         maskImg = img1*upMask
@@ -111,7 +112,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
                           criterion(gray_content_other, rgb_content_itself)
         latent_loss = latent_loss.mean()
-        loss_G = (recon_loss_feat + recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
+        loss_G = ( recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
 
         optimizer.zero_grad()
         (loss_G + loss_Re).backward()
@@ -162,7 +163,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 # model.train()
 
                 utils.save_image(
-                    invTrans(torch.cat([sample, fake_rgb, real_ir, img1_other[index], fake_rgb_other, upMask[index].expand(-1, 3, -1, -1)], 0)),
+                    invTrans(torch.cat([sample, fake_rgb, real_ir,
+                                        img1_other[index], fake_rgb_other,
+                                        2 * (upMask[index].expand(-1, 3, -1, -1)) - 1], 0)),
                     f"sample-deep-transfer/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(sample),
                     # normalize=True,
