@@ -1,6 +1,6 @@
 import argparse
 import os
-
+from pycocotools.coco import COCO
 import torchvision
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
@@ -18,7 +18,7 @@ trans = transforms.Compose([
     transforms.ToTensor(),
 #     normalize,
 ])
-dataset = None
+coco = None
 
 def annToTarget(ann):
     N = len(ann)
@@ -34,7 +34,7 @@ def annToTarget(ann):
         image_id[i] = obj['image_id']
         area[i] = obj['area']
         iscrowd[i] = obj['iscrowd']
-        masks.append(torch.from_numpy(dataset.coco.annToMask(obj)))
+        masks.append(torch.from_numpy(coco.annToMask(obj)))
 
     boxes[:, 2:] += boxes[:, :2]
 
@@ -60,9 +60,6 @@ def build_loaders(args):
                                     transform=trans, target_transform=annToTarget)
     testSet = dset.CocoDetection(root = path + '/images', annFile=path +'/annotations/modanet2018_instances_val.json',
                                     transform=trans, target_transform=annToTarget)
-
-
-
 
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.workers)
     test_loader = DataLoader(testSet, batch_size=4 * args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.workers)
@@ -151,7 +148,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     torch.multiprocessing.set_sharing_strategy('file_system')
     print(args)
-
+    
+    coco = COCO(args.modanet + '/annotations/modanet2018_instances_train.json')
     dist.launch(main, args.n_gpu, 1, 0, args.dist_url, args=(args,))
 
 
