@@ -55,6 +55,7 @@ def collate_fn(batch):
 
 #local = '/media/mahdi/2e197b57-e3e6-4185-8d1b-5fbb1c3b8b55/datasets/modanet/'
 def build_loaders(args):
+    print("build loaders")
     path = args.modanet
     global dataset, testSet
     dataset = dset.CocoDetection(root=path + '/images', annFile = path + '/annotations/modanet2018_instances_train.json',
