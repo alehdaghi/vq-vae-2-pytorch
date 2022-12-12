@@ -66,7 +66,7 @@ def build_loaders(args):
     return loader, test_loader
 
 
-grcnn = torchvision.models.detection.transform.GeneralizedRCNNTransform(min_size=400, max_size=600, image_mean=[0.485, 0.456, 0.406], image_std=[0.229, 0.224, 0.225])
+grcnn = torchvision.models.detection.transform.GeneralizedRCNNTransform(min_size=200, max_size=300, image_mean=[0.485, 0.456, 0.406], image_std=[0.229, 0.224, 0.225])
 model = mask_rcnn.maskrcnn_resnet50_fpn_v2(mask_rcnn.MaskRCNN_ResNet50_FPN_V2_Weights.COCO_V1)
 in_features = model.roi_heads.box_predictor.cls_score.in_features
 model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes=13)
