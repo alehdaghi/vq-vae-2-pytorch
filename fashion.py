@@ -128,6 +128,6 @@ if __name__ == "__main__":
                         help='number of data loading workers (default: 4)')
 
     args = parser.parse_args()
-
+    torch.multiprocessing.set_sharing_strategy('file_system')
     print(args)
     main(args)
