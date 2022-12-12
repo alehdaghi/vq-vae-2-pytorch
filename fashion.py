@@ -33,7 +33,7 @@ def annToTarget(ann):
         image_id[i] = obj['image_id']
         area[i] = obj['area']
         iscrowd[i] = obj['iscrowd']
-        masks[i].append(torch.from_numpy(dataset.coco.annToMask(obj)))
+        masks.append(torch.from_numpy(dataset.coco.annToMask(obj)))
 
     boxes[:, 2:] += boxes[:, :2]
     dict = {
@@ -42,7 +42,7 @@ def annToTarget(ann):
         'image_id': image_id,
         "area" : area,
         "iscrowd" : iscrowd,
-        "masks" : masks
+        "masks" : torch.stack(masks)
 
     }
     return dict
