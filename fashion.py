@@ -88,6 +88,8 @@ def train(args, model, device, loader, test_loader):
 
 
 def main(args):
+    global coco
+    coco = COCO(args.modanet + '/annotations/modanet2018_instances_train.json')
     args.distributed = dist.get_world_size() > 1
     grcnn = torchvision.models.detection.transform.GeneralizedRCNNTransform(min_size=200, max_size=300,
                                                                             image_mean=[0.485, 0.456, 0.406],
@@ -148,8 +150,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     torch.multiprocessing.set_sharing_strategy('file_system')
     print(args)
-    
-    coco = COCO(args.modanet + '/annotations/modanet2018_instances_train.json')
+
+
     dist.launch(main, args.n_gpu, 1, 0, args.dist_url, args=(args,))
 
 
