@@ -49,7 +49,8 @@ def annToTarget(ann):
 
 
 #local = '/media/mahdi/2e197b57-e3e6-4185-8d1b-5fbb1c3b8b55/datasets/modanet/'
-def build_loaders(args, path='/export/livia/home/vision/malehdaghi/Datasets/modanet'):
+def build_loaders(args):
+    path = args.modanet
     global dataset, testSet
     dataset = dset.CocoDetection(root=path + '/images', annFile = path + '/annotations/modanet2018_instances_train.json',
                                     transform=trans, target_transform=annToTarget)
@@ -118,9 +119,11 @@ if __name__ == "__main__":
     parser.add_argument("--start", "-s", type=int, default=0)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--sched", type=str)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", '-b', type=int, default=32)
     parser.add_argument('--resume', '-r', default='', type=str,
                         help='resume from checkpoint')
+    parser.add_argument('--modanet' , default='/export/livia/home/vision/malehdaghi/Datasets/modanet', type=str,
+                        help='path to modanet')
     parser.add_argument('--workers', default=0, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
 
