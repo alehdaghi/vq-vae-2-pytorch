@@ -21,6 +21,7 @@ trans = transforms.Compose([
 coco = None
 
 def annToTarget(ann):
+    print("annToTarget", coco)
     N = len(ann)
     boxes = torch.FloatTensor(N, 4)
     labels = torch.LongTensor(N)
