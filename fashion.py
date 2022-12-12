@@ -42,7 +42,7 @@ def annToTarget(ann):
         'image_id': image_id,
         "area" : area,
         "iscrowd" : iscrowd,
-        "masks" : torch.stack(masks)
+        "masks" : torch.stack(masks) if len(masks) > 0 else torch.empty()
 
     }
     return dict
