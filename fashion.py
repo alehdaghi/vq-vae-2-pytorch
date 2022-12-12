@@ -69,7 +69,7 @@ def build_loaders(args):
 
 
 
-def train(args, model, loader, test_loader):
+def train(args, model, device, loader, test_loader):
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(params, lr=0.005,  momentum=0.9, weight_decay=0.0005, nesterov=True)
 
@@ -121,7 +121,7 @@ def main(args):
             device_ids=[dist.get_local_rank()],
             output_device=dist.get_local_rank(),
         )
-    train(args, model, loader=loader, test_loader=test_loader)
+    train(args, model, device, loader=loader, test_loader=test_loader)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
