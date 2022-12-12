@@ -68,16 +68,8 @@ def build_loaders(args):
     return loader, test_loader
 
 
-grcnn = torchvision.models.detection.transform.GeneralizedRCNNTransform(min_size=200, max_size=300, image_mean=[0.485, 0.456, 0.406], image_std=[0.229, 0.224, 0.225])
-model = mask_rcnn.maskrcnn_resnet50_fpn_v2(mask_rcnn.MaskRCNN_ResNet50_FPN_V2_Weights.COCO_V1)
-in_features = model.roi_heads.box_predictor.cls_score.in_features
-model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes=13)
-model.roi_heads.mask_predictor = mask_rcnn.MaskRCNNPredictor(256, 256, 13)
-model.transform = grcnn
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-model.to(device)
 
-def train(args, loader, test_loader):
+def train(args, model, loader, test_loader):
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(params, lr=0.005,  momentum=0.9, weight_decay=0.0005, nesterov=True)
 
@@ -99,7 +91,17 @@ def train(args, loader, test_loader):
 
 def main(args):
     args.distributed = dist.get_world_size() > 1
-    global model
+    grcnn = torchvision.models.detection.transform.GeneralizedRCNNTransform(min_size=200, max_size=300,
+                                                                            image_mean=[0.485, 0.456, 0.406],
+                                                                            image_std=[0.229, 0.224, 0.225])
+    model = mask_rcnn.maskrcnn_resnet50_fpn_v2(mask_rcnn.MaskRCNN_ResNet50_FPN_V2_Weights.COCO_V1)
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes=13)
+    model.roi_heads.mask_predictor = mask_rcnn.MaskRCNNPredictor(256, 256, 13)
+    model.transform = grcnn
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    model.to(device)
+
     if len(args.resume) > 0:
         model_path = args.resume
         if os.path.isfile(model_path):
@@ -119,7 +121,7 @@ def main(args):
             device_ids=[dist.get_local_rank()],
             output_device=dist.get_local_rank(),
         )
-    train(args, loader=loader, test_loader=test_loader)
+    train(args, model, loader=loader, test_loader=test_loader)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
