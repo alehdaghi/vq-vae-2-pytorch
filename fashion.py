@@ -26,14 +26,14 @@ def annToTarget(ann):
     image_id = torch.LongTensor(N)
     area = torch.IntTensor(N)
     iscrowd = torch.IntTensor(N)
-    masks = torch.empty((N, 600, 400), dtype=torch.uint8)
+    masks = []#torch.empty((N, 600, 400), dtype=torch.uint8)
     for i,obj in enumerate(ann):
         boxes[i] = torch.FloatTensor(obj['bbox'])
         labels[i] = obj['category_id']
         image_id[i] = obj['image_id']
         area[i] = obj['area']
         iscrowd[i] = obj['iscrowd']
-        masks[i] = torch.from_numpy(dataset.coco.annToMask(obj))
+        masks[i].append(torch.from_numpy(dataset.coco.annToMask(obj)))
 
     boxes[:, 2:] += boxes[:, :2]
     dict = {
