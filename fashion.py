@@ -49,6 +49,8 @@ def annToTarget(ann):
     }
     return dict
 
+def collate_fn(batch):
+    return tuple(zip(*batch))
 
 #local = '/media/mahdi/2e197b57-e3e6-4185-8d1b-5fbb1c3b8b55/datasets/modanet/'
 def build_loaders(args):
@@ -61,8 +63,7 @@ def build_loaders(args):
 
 
 
-    def collate_fn(batch):
-        return tuple(zip(*batch))
+
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.workers)
     test_loader = DataLoader(testSet, batch_size=4 * args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.workers)
     return loader, test_loader
