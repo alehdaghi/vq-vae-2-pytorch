@@ -9,6 +9,7 @@ import torch
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 import torchvision.models.detection.mask_rcnn as mask_rcnn
 from vision.engine import *
+import distributed as dist
 
 img_h, img_w = 288, 144
 
@@ -90,12 +91,15 @@ def train(args, loader, test_loader):
         lr_scheduler.step()
         # evaluate on the test dataset
         evaluate(model, test_loader, device=device)
-        torch.save(model.state_dict(), f"rcn/rcn_{str(epoch + 1).zfill(3)}.pt")
+        if dist.is_primary():
+            torch.save(model.state_dict(), f"rcn/rcn_{str(epoch + 1).zfill(3)}.pt")
 
-    torch.save(model.state_dict(), 'rcnn-last.pt')
+    # torch.save(model.state_dict(), 'rcnn-last.pt')
 
 
 def main(args):
+    args.distributed = dist.get_world_size() > 1
+    global model
     if len(args.resume) > 0:
         model_path = args.resume
         if os.path.isfile(model_path):
@@ -109,11 +113,24 @@ def main(args):
 
     # loader, test_loader = build_loaders(args, '/media/mahdi/2e197b57-e3e6-4185-8d1b-5fbb1c3b8b55/datasets/modanet/')
     loader, test_loader = build_loaders(args)
+    if args.distributed:
+        model = torch.nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=[dist.get_local_rank()],
+            output_device=dist.get_local_rank(),
+        )
     train(args, loader=loader, test_loader=test_loader)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n_gpu", type=int, default=1)
+
+    port = (
+        2 ** 15
+        + 2 ** 14
+        + hash(os.getuid() if sys.platform != "win32" else 1) % 2 ** 14
+    )
+    parser.add_argument("--dist_url", default=f"tcp://127.0.0.1:{port}")
 
     parser.add_argument("--size", type=int, default=256)
     parser.add_argument("--epoch", "-e", type=int, default=10)
@@ -131,4 +148,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     torch.multiprocessing.set_sharing_strategy('file_system')
     print(args)
-    main(args)
+
+    dist.launch(main, args.n_gpu, 1, 0, args.dist_url, args=(args,))
+
+
+    # main(args)
