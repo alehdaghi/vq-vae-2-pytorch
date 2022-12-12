@@ -80,9 +80,10 @@ def train(args, model, device, loader, test_loader):
         # update the learning rate
         lr_scheduler.step()
         # evaluate on the test dataset
-        evaluate(model, test_loader, device=device)
+
         if dist.is_primary():
             torch.save(model.state_dict(), f"rcn/rcn_{str(epoch + 1).zfill(3)}.pt")
+        evaluate(model, test_loader, device=device)
 
     # torch.save(model.state_dict(), 'rcnn-last.pt')
 
@@ -90,6 +91,7 @@ def train(args, model, device, loader, test_loader):
 def main(args):
     global coco
     coco = COCO(args.modanet + '/annotations/modanet2018_instances_train.json')
+    print('main')
     args.distributed = dist.get_world_size() > 1
     grcnn = torchvision.models.detection.transform.GeneralizedRCNNTransform(min_size=200, max_size=300,
                                                                             image_mean=[0.485, 0.456, 0.406],
