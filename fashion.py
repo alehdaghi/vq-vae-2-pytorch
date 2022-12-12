@@ -36,13 +36,14 @@ def annToTarget(ann):
         masks.append(torch.from_numpy(dataset.coco.annToMask(obj)))
 
     boxes[:, 2:] += boxes[:, :2]
+
     dict = {
         'boxes' : boxes,
         'labels': labels - 1,
         'image_id': image_id,
         "area" : area,
         "iscrowd" : iscrowd,
-        "masks" : torch.stack(masks) if len(masks) > 0 else torch.empty()
+        "masks" : torch.stack(masks) if N > 0 else torch.empty((N, 300, 200))
 
     }
     return dict
