@@ -115,7 +115,7 @@ def main(args):
         if os.path.isfile(model_path):
             print('==> loading checkpoint {}'.format(args.resume))
             checkpoint = torch.load(model_path)
-            model.load_state_dict(checkpoint, strict=False)
+            model.load_state_dict(checkpoint, strict=True)
             print('==> loaded checkpoint {} (epoch)'
                   .format(args.resume))
         else:
