@@ -66,7 +66,7 @@ def build_loaders(args):
                                     transform=trans)
     dataset.target_transform = annToTarget(dataset.coco)
     testSet = dset.CocoDetection(root = path + '/images', annFile=path +'/annotations/modanet2018_instances_val.json',
-                                    transform=trans, target_transform=annToTarget())
+                                    transform=trans)
     testSet.target_transform = annToTarget(testSet.coco)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.workers)
     test_loader = DataLoader(testSet, batch_size=4 * args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.workers)
