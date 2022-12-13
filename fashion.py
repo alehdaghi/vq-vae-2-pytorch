@@ -25,7 +25,6 @@ class annToTarget():
         self.coco = coco
 
     def __call__(self, ann):
-        print("annToTarget", self.coco)
         N = len(ann)
         boxes = torch.FloatTensor(N, 4)
         labels = torch.LongTensor(N)
@@ -85,7 +84,7 @@ def train(args, model, device, loader, test_loader):
     num_epochs = args.epoch
     for epoch in range(num_epochs):
         # train for one epoch, printing every 10 iterations
-        train_one_epoch(model, optimizer, loader, device, epoch, print_freq=10)
+        train_one_epoch(model, optimizer, loader, device, epoch, print_freq=50)
         # update the learning rate
         lr_scheduler.step()
         # evaluate on the test dataset
