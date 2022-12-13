@@ -86,7 +86,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         w = torch.rand(bs, 3).cuda() + 0.01
         w = w / w.sum(dim=1, keepdim=True)
         gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
-        # gray = img2
+        gray = img2
 
 
         rgb_content, latent_loss = model.encode_content(img1)
@@ -147,8 +147,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
             loader.set_description(
                 (
-                    f"epoch: {epoch + 1}; mse: {recon_loss.item():.5f}; "
-                    f"lat: {latent_loss.item():.3f}({mse_sum / mse_n:.5f}); "
+                    f"epoch: {epoch + 1};"
+                    f" mse: {recon_loss.item():.5f}({mse_sum / mse_n:.5f}); "
+                    f"lat: {latent_loss.item():.3f}; "
                     f"id: {id_err:.3f}({id_sum / (i+1):.3f}); "
                     f"feat: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
                     f"lr: {lr:.5f}"

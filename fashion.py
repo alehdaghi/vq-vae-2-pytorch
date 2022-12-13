@@ -62,12 +62,14 @@ def build_loaders(args):
     print("build loaders")
     path = args.modanet
     global dataset, testSet
-    dataset = dset.CocoDetection(root=path + '/images', annFile = path + '/annotations/modanet2018_instances_train.json',
-                                    transform=trans)
-    dataset.target_transform = annToTarget(dataset.coco)
+    dataset = dset.CocoDetection(root=path + '/images', annFile = path + '/annotations/modanet2018_instances_train.json'
+                                    )
+    dataset.transforms = torchvision.datasets.vision.StandardTransform(trans, annToTarget(dataset.coco))
+
     testSet = dset.CocoDetection(root = path + '/images', annFile=path +'/annotations/modanet2018_instances_val.json',
-                                    transform=trans)
-    testSet.target_transform = annToTarget(testSet.coco)
+                                    )
+    testSet.transforms = torchvision.datasets.vision.StandardTransform(trans, annToTarget(testSet.coco))
+
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.workers)
     test_loader = DataLoader(testSet, batch_size=4 * args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.workers)
     return loader, test_loader

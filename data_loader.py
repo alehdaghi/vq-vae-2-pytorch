@@ -10,6 +10,8 @@ from torch.utils.data import Sampler
 from torchvision.transforms import transforms
 import pickle
 
+import torchvision.models.detection.mask_rcnn as mask_rcnn
+
 
 class SYSUData(data.Dataset):
     transform = transforms.Compose(
