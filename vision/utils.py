@@ -8,7 +8,7 @@ import torch.distributed as dist
 
 import errno
 import os
-import distributed as dist
+import distributed as mydist
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -210,7 +210,7 @@ class MetricLogger(object):
             data_time.update(time.time() - end)
             yield obj
             iter_time.update(time.time() - end)
-            if dist.is_primary() and (i % print_freq == 0 or i == len(iterable) - 1):
+            if mydist.is_primary() and (i % print_freq == 0 or i == len(iterable) - 1):
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 if torch.cuda.is_available():
@@ -228,7 +228,7 @@ class MetricLogger(object):
             end = time.time()
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-        if dist.is_primary():
+        if mydist.is_primary():
             print('{} Total time: {} ({:.4f} s / it)'.format(
                 header, total_time_str, total_time / len(iterable)))
 
