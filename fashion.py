@@ -11,6 +11,10 @@ import torchvision.models.detection.mask_rcnn as mask_rcnn
 from vision.engine import *
 import distributed as dist
 
+import resource
+rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
+
 img_h, img_w = 288, 144
 
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
@@ -84,7 +88,7 @@ def train(args, model, device, loader, test_loader):
     num_epochs = args.epoch
     for epoch in range(args.start, args.epoch):
         # train for one epoch, printing every 10 iterations
-        train_one_epoch(model, optimizer, loader, device, epoch, print_freq=50)
+        train_one_epoch(model, optimizer, loader, device, epoch, print_freq=10)
         # update the learning rate
         lr_scheduler.step()
         # evaluate on the test dataset
