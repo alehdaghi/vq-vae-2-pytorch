@@ -18,37 +18,41 @@ trans = transforms.Compose([
     transforms.ToTensor(),
 #     normalize,
 ])
-coco = None
 
-def annToTarget(ann):
-    print("annToTarget", coco)
-    N = len(ann)
-    boxes = torch.FloatTensor(N, 4)
-    labels = torch.LongTensor(N)
-    image_id = torch.LongTensor(N)
-    area = torch.IntTensor(N)
-    iscrowd = torch.IntTensor(N)
-    masks = []#torch.empty((N, 600, 400), dtype=torch.uint8)
-    for i,obj in enumerate(ann):
-        boxes[i] = torch.FloatTensor(obj['bbox'])
-        labels[i] = obj['category_id']
-        image_id[i] = obj['image_id']
-        area[i] = obj['area']
-        iscrowd[i] = obj['iscrowd']
-        masks.append(torch.from_numpy(coco.annToMask(obj)))
 
-    boxes[:, 2:] += boxes[:, :2]
+class annToTarget():
+    def __init__(self, coco):
+        self.coco = coco
 
-    dict = {
-        'boxes' : boxes,
-        'labels': labels - 1,
-        'image_id': image_id,
-        "area" : area,
-        "iscrowd" : iscrowd,
-        "masks" : torch.stack(masks) if N > 0 else torch.empty((N, 300, 200))
+    def __call__(self, ann):
+        print("annToTarget", self.coco)
+        N = len(ann)
+        boxes = torch.FloatTensor(N, 4)
+        labels = torch.LongTensor(N)
+        image_id = torch.LongTensor(N)
+        area = torch.IntTensor(N)
+        iscrowd = torch.IntTensor(N)
+        masks = []#torch.empty((N, 600, 400), dtype=torch.uint8)
+        for i,obj in enumerate(ann):
+            boxes[i] = torch.FloatTensor(obj['bbox'])
+            labels[i] = obj['category_id']
+            image_id[i] = obj['image_id']
+            area[i] = obj['area']
+            iscrowd[i] = obj['iscrowd']
+            masks.append(torch.from_numpy(self.coco.annToMask(obj)))
 
-    }
-    return dict
+        boxes[:, 2:] += boxes[:, :2]
+
+        dict = {
+            'boxes' : boxes,
+            'labels': labels - 1,
+            'image_id': image_id,
+            "area" : area,
+            "iscrowd" : iscrowd,
+            "masks" : torch.stack(masks) if N > 0 else torch.empty((N, 300, 200))
+
+        }
+        return dict
 
 def collate_fn(batch):
     return tuple(zip(*batch))
@@ -59,10 +63,11 @@ def build_loaders(args):
     path = args.modanet
     global dataset, testSet
     dataset = dset.CocoDetection(root=path + '/images', annFile = path + '/annotations/modanet2018_instances_train.json',
-                                    transform=trans, target_transform=annToTarget)
+                                    transform=trans)
+    dataset.target_transform = annToTarget(dataset.coco)
     testSet = dset.CocoDetection(root = path + '/images', annFile=path +'/annotations/modanet2018_instances_val.json',
-                                    transform=trans, target_transform=annToTarget)
-
+                                    transform=trans, target_transform=annToTarget())
+    testSet.target_transform = annToTarget(testSet.coco)
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.workers)
     test_loader = DataLoader(testSet, batch_size=4 * args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.workers)
     return loader, test_loader
@@ -91,8 +96,6 @@ def train(args, model, device, loader, test_loader):
 
 
 def main(args):
-    global coco
-    coco = COCO(args.modanet + '/annotations/modanet2018_instances_train.json')
     print('main')
     args.distributed = dist.get_world_size() > 1
     grcnn = torchvision.models.detection.transform.GeneralizedRCNNTransform(min_size=200, max_size=300,
