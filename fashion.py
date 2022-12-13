@@ -90,7 +90,10 @@ def train(args, model, device, loader, test_loader):
         # evaluate on the test dataset
 
         if dist.is_primary():
-            torch.save(model.state_dict(), f"rcn/rcn_{str(epoch + 1).zfill(3)}.pt")
+            if args.distributed:
+                torch.save(model.module.state_dict(), f"rcn/rcn_{str(epoch + 1).zfill(3)}.pt")
+            else:
+                torch.save(model.state_dict(), f"rcn/rcn_{str(epoch + 1).zfill(3)}.pt")
         # evaluate(model, test_loader, device=device)
 
     # torch.save(model.state_dict(), 'rcnn-last.pt')
@@ -102,7 +105,7 @@ def main(args):
     grcnn = torchvision.models.detection.transform.GeneralizedRCNNTransform(min_size=200, max_size=300,
                                                                             image_mean=[0.485, 0.456, 0.406],
                                                                             image_std=[0.229, 0.224, 0.225])
-    model = mask_rcnn.maskrcnn_resnet50_fpn_v2(mask_rcnn.MaskRCNN_ResNet50_FPN_V2_Weights.COCO_V1)
+    model = mask_rcnn.maskrcnn_resnet50_fpn_v2(weights=mask_rcnn.MaskRCNN_ResNet50_FPN_V2_Weights.COCO_V1)
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes=13)
     model.roi_heads.mask_predictor = mask_rcnn.MaskRCNNPredictor(256, 256, 13)
