@@ -82,7 +82,7 @@ def train(args, model, device, loader, test_loader):
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
     num_epochs = args.epoch
-    for epoch in range(num_epochs):
+    for epoch in range(args.start, args.epoch):
         # train for one epoch, printing every 10 iterations
         train_one_epoch(model, optimizer, loader, device, epoch, print_freq=50)
         # update the learning rate
@@ -91,7 +91,7 @@ def train(args, model, device, loader, test_loader):
 
         if dist.is_primary():
             torch.save(model.state_dict(), f"rcn/rcn_{str(epoch + 1).zfill(3)}.pt")
-        evaluate(model, test_loader, device=device)
+        # evaluate(model, test_loader, device=device)
 
     # torch.save(model.state_dict(), 'rcnn-last.pt')
 
