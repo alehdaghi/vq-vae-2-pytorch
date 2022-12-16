@@ -53,6 +53,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     id_sum = 0
     feat_sum = 0
 
+    ir_sum = 0
 
     for i, (img1, img2, label1, label2, camera1, camera2) in enumerate(loader):
         # vq_vae, person_id =  model['vq_vae'], model['person_id']
@@ -66,9 +67,12 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         bs = img1.size(0)
 
+        model.person_id.requires_grad_(True)
+        model.person_id.train()
         feat, score, feat2d, actMap, feat2d_x3 = model.encode_person(img1)
         m = actMap.view(bs, -1).median(dim=1)[0].view(bs, 1, 1, 1)
         # actMap[actMap < m ] = 0
+        # actMap = torch.ones_like(actMap).cuda()
         upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
 
@@ -77,7 +81,10 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         var = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).var(dim=1)
         mean = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).mean(dim=1)
 
+        optimizer_reid.zero_grad()
         loss_Re = loss_id_real + loss_triplet + var.mean()
+        loss_Re.backward()
+        optimizer_reid.step()
 
         ids = random_pair(args)
 
@@ -97,13 +104,25 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         rgb_reconst = model.decode(rgb_content_itself)
 
         gray_b, gray_t = model.encode_content(gray)
-        gray_b, gray_t = model.fuse(gray_b, gray_t, feat2d_x3 * actMap ,feat2d * actMap)
-        gray_content_itself, latent_loss_gray = model.quantize_content(gray_b, gray_t)
+        gray_b_f, gray_t_f = model.fuse(gray_b, gray_t, feat2d_x3 * actMap ,feat2d * actMap)
+        gray_content_itself, latent_loss_gray = model.quantize_content(gray_b_f, gray_t_f)
         rgb_fake = model.decode(gray_content_itself)
 
         gray_b_other, gray_t_other = model.fuse(gray_b, gray_t, feat2d_x3[ids] * actMap[ids], feat2d[ids] * actMap[ids])
         gray_content_other, latent_loss_other = model.quantize_content(gray_b_other, gray_t_other)
         rgb_fake_other = model.decode(gray_content_other)
+
+        ir_b, ir_t = model.encode_content(img2)
+        ir_b_f, ir_t_f = model.fuse(ir_b, ir_t, feat2d_x3 * actMap, feat2d * actMap)
+        ir_content, latent_loss_ir = model.quantize_content(ir_b_f, ir_t_f)
+        ir_fake = model.decode(ir_content)
+
+        model.person_id.requires_grad_(False)
+        model.person_id.eval()
+        featIR, score, _, _, _ = model.person_id(xRGB=None, xIR=ir_fake, modal=2, with_feature=True)
+        loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
+        loss_feat_ir = criterion(featIR, feat.detach())
+        loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
         maskImg = img1*upMask
 
@@ -115,8 +134,10 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         latent_loss = (latent_loss + latent_loss_gray + latent_loss_other).mean()
         loss_G = (recon_loss_feat +  recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
 
+
+
         optimizer.zero_grad()
-        (loss_G + loss_Re).backward()
+        (loss_G + loss_Re_Ir).backward()
         if scheduler is not None:
             scheduler.step()
         optimizer.step()
@@ -134,17 +155,18 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         id_sum += id_err
         feat_err = recon_loss_feat.item()
         feat_sum += feat_err
+        ir_sum += loss_Re_Ir.item()
 
         if dist.is_primary():
             lr = optimizer.param_groups[0]["lr"]
 
             loader.set_description(
                 (
-                    f"epoch: {epoch + 1}; mse: {recon_loss.item():.5f}({mse_sum / mse_n:.5f}); "
+                    f"e: {epoch + 1}; mse: {recon_loss.item():.5f}({mse_sum / mse_n:.5f}); "
                     f"lat: {latent_loss.item():.3f}; "
                     f"id: {id_err:.3f}({id_sum / (i+1):.3f}); "
-                    f"feat: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
-                    f"lr: {lr:.5f}"
+                    f"ft: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
+                    f"ir: {loss_Re_Ir.item():.3f}({ir_sum / (i + 1):.5f}); "
                 )
             )
 
@@ -172,9 +194,11 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                     # normalize=True,
                     range=(-1, 1),
                 )
+                return
     writer.add_scalar("ID_loss/train", id_sum / len(loader), epoch)
     writer.add_scalar("Rec_loss/train", mse_sum / len(loader), epoch)
     writer.add_scalar("Feat_loss/train", feat_sum / len(loader), epoch)
+    writer.add_scalar("ID_ir/train", ir_sum / len(loader), epoch)
 
 def main(args):
     device = "cuda"
@@ -213,8 +237,13 @@ def main(args):
         else:
             print('==> no checkpoint found at {}'.format(args.resume))
 
+    ignored_params = list(map(id, model.person_id.parameters()))
+    ids = set(map(id, model.parameters()))
+    params = filter(lambda p: id(p) in ids, model.parameters())
+    base_params = filter(lambda p: id(p) not in ignored_params, params)
+
     optimizer_reID = optim.Adam(model.person_id.parameters(), lr=args.lr)
-    optimizer = optim.Adam(list(model.parameters()) , lr=args.lr)
+    optimizer = optim.Adam(base_params , lr=args.lr)
 
     scheduler = None
     if args.sched == "cycle":

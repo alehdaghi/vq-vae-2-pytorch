@@ -420,9 +420,9 @@ class ModelAdaptive_Deep(nn.Module):
         return quant, diff
 
     def fuse(self, cb, ct, sb, st):
-        f = self.fusion1(cb, sb)
+        f = self.fusion1(cb, sb.detach())
         cb = self.resblocks1(f) + f + cb
-        f = self.fusion2(ct, self.conv1(st))
+        f = self.fusion2(ct, self.conv1(st.detach()))
         ct = self.resblocks2(f) + f + ct
         return cb, ct
 
