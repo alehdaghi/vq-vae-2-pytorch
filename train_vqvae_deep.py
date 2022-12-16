@@ -195,7 +195,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                     # normalize=True,
                     range=(-1, 1),
                 )
-                return
+
     writer.add_scalar("ID_loss/train", id_sum / len(loader), epoch)
     writer.add_scalar("Rec_loss/train", mse_sum / len(loader), epoch)
     writer.add_scalar("Feat_loss/train", feat_sum / len(loader), epoch)
