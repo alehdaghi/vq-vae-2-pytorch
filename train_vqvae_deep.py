@@ -71,8 +71,11 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         model.person_id.train()
         feat, score, feat2d, actMap, feat2d_x3 = model.encode_person(img1)
         m = actMap.view(bs, -1).median(dim=1)[0].view(bs, 1, 1, 1)
-        actMap[actMap < m ] = 0
+        zeros = actMap < m
+
         actMap = torch.ones_like(actMap).cuda()
+        actMap[zeros] = 0
+
         upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
 
