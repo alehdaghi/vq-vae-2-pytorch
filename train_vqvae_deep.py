@@ -45,7 +45,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     triplet_criterion = TripletLoss()
 
     latent_loss_weight = 0.25
-    sample_size = 25
+    sample_size = 16
 
     mse_sum = 0
     mse_n = 0
@@ -187,7 +187,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 # model.train()
 
                 utils.save_image(
-                    invTrans(torch.cat([sample, fake_rgb, fake_rgb_other,
+                    invTrans(torch.cat([sample, fake_recon, fake_rgb, fake_rgb_other,
                                         real_ir, ir_fake[index],
                                         2 * (upMask[index].expand(-1, 3, -1, -1)) - 1], 0)),
                     f"sample-deep-transfer/{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
