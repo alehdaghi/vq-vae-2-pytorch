@@ -71,8 +71,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         model.person_id.train()
         feat, score, feat2d, actMap, feat2d_x3 = model.encode_person(img1)
         m = actMap.view(bs, -1).median(dim=1)[0].view(bs, 1, 1, 1)
-        # actMap[actMap < m ] = 0
-        # actMap = torch.ones_like(actMap).cuda()
+        actMap[actMap < m ] = 0
+        actMap = torch.ones_like(actMap).cuda()
         upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
 
@@ -87,9 +87,6 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         optimizer_reid.step()
 
         ids = random_pair(args)
-
-        img1_other = img1[ids]
-        feat2d_other = feat2d[ids]
 
         # assign_adain_params(adain_params[:bs], model.adaptor)
 
@@ -120,7 +117,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         model.person_id.requires_grad_(False)
         model.person_id.eval()
         featIR, score, _, _, _ = model.person_id(xRGB=ir_fake, xIR=None, modal=1, with_feature=True)
-        loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
+        loss_id_real_ir = torch.nn.functional.cross_entropy(score, label2)
         loss_feat_ir = criterion(featIR, feat.detach())
         loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
@@ -131,7 +128,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                      criterion(rgb_fake_other*upMask, maskImg)
         recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
                           criterion(gray_content_other, rgb_content_itself)
-        latent_loss = (latent_loss + latent_loss_gray + latent_loss_other).mean()
+        latent_loss = (latent_loss + latent_loss_gray + latent_loss_other + latent_loss_ir).mean()
         loss_G = (recon_loss_feat +  recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
 
 
