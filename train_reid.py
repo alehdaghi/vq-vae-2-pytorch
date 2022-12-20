@@ -212,9 +212,11 @@ if __name__ == "__main__":
                         help='number of data loading workers (default: 4)')
 
     parser.add_argument("--path", type=str, default='../Datasets/SYSU-MM01/')
+    parser.add_argument('--gpu', default='0', type=str,
+                        help='gpu device ids for CUDA_VISIBLE_DEVICES')
 
     args = parser.parse_args()
 
     print(args)
-
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     dist.launch(main, args.n_gpu, 1, 0, args.dist_url, args=(args,))
