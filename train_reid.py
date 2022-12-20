@@ -122,6 +122,9 @@ def main(args):
         [
             transforms.ToPILImage(),
             # transforms.CenterCrop(args.size),
+            transforms.Pad(10),
+            transforms.RandomCrop((args.img_h, args.img_w)),
+            transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
@@ -187,7 +190,7 @@ def main(args):
                 torch.save(model.person_id.state_dict(), f"checkpoint/reid_best.pt")
                 best_epoch = i
                 best_mAp = mAp
-            print("best mAP {} epoch {}".format(best_mAp, best_epoch))
+            print("best mAP {:.2%} epoch {}".format(best_mAp*100, best_epoch))
 
         model.person_id.train()
         torch.save(model.person_id.state_dict(), f"checkpoint/reid_last.pt")
