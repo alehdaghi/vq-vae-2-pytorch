@@ -228,6 +228,11 @@ if __name__ == "__main__":
     parser.add_argument('--gpu', default='0', type=str,
                         help='gpu device ids for CUDA_VISIBLE_DEVICES')
 
+    parser.add_argument('--img_w', default=144, type=int,
+                        metavar='imgw', help='img width')
+    parser.add_argument('--img_h', default=288, type=int,
+                        metavar='imgh', help='img height')
+
     args = parser.parse_args()
 
     print(args)
