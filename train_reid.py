@@ -186,6 +186,7 @@ def main(args):
             if mAp > best_mAp:
                 torch.save(model.person_id.state_dict(), f"checkpoint/reid_best.pt")
                 best_epoch = i
+                best_mAp = mAp
             print("best mAP {} epoch {}".format(best_mAp, best_epoch))
 
         model.person_id.train()
