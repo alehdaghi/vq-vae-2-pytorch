@@ -171,7 +171,7 @@ def main(args):
             warmup_proportion=0.05,
         )
 
-
+    best_mAp , best_epoch = 0 , 0
     for i in range(args.start, args.epoch):
         sampler = dataset.samplize(args.batch_size, args.num_pos)
         loader = DataLoader(
@@ -181,7 +181,13 @@ def main(args):
 
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i % 4 == 0:
-            validate(0, model.person_id, args=args, mode='all')
+            mAp = validate(0, model.person_id, args=args, mode='all')
+            writer.add_scalar("mAP/eval", mAp, i)
+            if mAp > best_mAp:
+                torch.save(model.person_id.state_dict(), f"checkpoint/reid_best.pt")
+                best_epoch = i
+            print("best mAP{} epoch{}".format(best_mAp, best_epoch))
+
         model.person_id.train()
         torch.save(model.person_id.state_dict(), f"checkpoint/reid_last.pt")
         if i % 10 == 0 and dist.is_primary():
