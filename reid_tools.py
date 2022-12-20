@@ -20,7 +20,7 @@ transform_test = transforms.Compose([
     normalize,
 ])
 
-test_mode = [1, 1]
+
 nquery, ngall = 0, 0
 
 def load_data(args, test_batch=50, data_path='../Datasets/SYSU-MM01/', mode = 'Vis'):
@@ -46,7 +46,7 @@ def load_data(args, test_batch=50, data_path='../Datasets/SYSU-MM01/', mode = 'V
     print('  query    | {:5d} | {:8d}'.format(len(np.unique(query_label)), nquery))
     print('  gallery  | {:5d} | {:8d}'.format(len(np.unique(gall_label)), ngall))
 
-def test(epoch, net):
+def test(epoch, net, test_mode = [1, 2]):
     # switch to evaluation mode
     pool_dim = net.pool_dim
     net.eval()
@@ -110,8 +110,14 @@ def validate(epoch, model, args, mode = 'Vis'):
 
     if gall_loader is None:
         load_data(args, mode=mode)
+    if mode == 'Vis':
+        test_mode = [1, 1]
+    elif mode == 'Ir':
+        test_mode = [2, 2]
+    else:
+        test_mode = [1, 2]
 
-    cmc, mAP, mINP, cmc_att, mAP_att, mINP_att = test(epoch, model)
+    cmc, mAP, mINP, cmc_att, mAP_att, mINP_att = test(epoch, model, test_mode)
     # save model
     # if max(mAP, mAP_att) > best_acc:  # not the real best for sysu-mm01
     #     best_acc = max(mAP, mAP_att)
