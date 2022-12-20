@@ -23,7 +23,7 @@ transform_test = transforms.Compose([
 test_mode = [1, 1]
 nquery, ngall = 0, 0
 
-def load_data(args, test_batch=50, data_path='../Datasets/SYSU-MM01/'):
+def load_data(args, test_batch=50, data_path='../Datasets/SYSU-MM01/', mode = 'Vis'):
 
     global gall_loader, query_loader, \
         nquery, ngall, query_img,\
@@ -31,8 +31,8 @@ def load_data(args, test_batch=50, data_path='../Datasets/SYSU-MM01/'):
 
 
     # testing set
-    query_img, query_label, query_cam = process_sysu(data_path, data='query', mode ='Vis')
-    gall_img, gall_label, gall_cam = process_sysu(data_path, data='gallery', mode = 'Vis', single_shot=False)
+    query_img, query_label, query_cam = process_sysu(data_path, data='query', mode = mode)
+    gall_img, gall_label, gall_cam = process_sysu(data_path, data='gallery', mode = mode, single_shot=False)
     nquery = len(query_label)
     ngall = len(gall_label)
 
@@ -105,11 +105,11 @@ def test(epoch, net):
 
     return cmc, mAP, mINP, cmc_att, mAP_att, mINP_att
 
-def validate(epoch, model, args):
+def validate(epoch, model, args, mode = 'Vis'):
     global best_acc, best_epoch
 
     if gall_loader is None:
-        load_data(args)
+        load_data(args, mode=mode)
 
     cmc, mAP, mINP, cmc_att, mAP_att, mINP_att = test(epoch, model)
     # save model

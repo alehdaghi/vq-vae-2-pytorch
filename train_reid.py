@@ -144,9 +144,12 @@ def main(args):
         if os.path.isfile(model_path):
             print('==> loading checkpoint {}'.format(args.resume))
             checkpoint = torch.load(model_path)
-            model.load_state_dict(checkpoint, strict=False)
-            print('==> loaded checkpoint {} (epoch)'
-                  .format(args.resume))
+            try:
+                model.person_id.load_state_dict(checkpoint, strict=True)
+                print('==> loaded checkpoint {} (epoch)'
+                      .format(args.resume))
+            except:
+                print('==> loaded checkpoint failure from {}'.format(args.resume))
         else:
             print('==> no checkpoint found at {}'.format(args.resume))
 
