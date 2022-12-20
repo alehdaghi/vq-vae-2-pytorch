@@ -140,6 +140,7 @@ def validate(epoch, model, args, mode = 'Vis'):
             cmc[0], cmc[4], cmc[9], cmc[19], mAP, mINP))
     print('FC:   Rank-1: {:.2%} | Rank-5: {:.2%} | Rank-10: {:.2%}| Rank-20: {:.2%}| mAP: {:.2%}| mINP: {:.2%}'.format(
         cmc_att[0], cmc_att[4], cmc_att[9], cmc_att[19], mAP_att, mINP_att))
+    return max(mAP, mAP_att)
 
 
 def eval_sysu(distmat, q_pids, g_pids, q_camids, g_camids, max_rank=20):
