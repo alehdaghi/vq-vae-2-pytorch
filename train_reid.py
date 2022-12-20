@@ -178,7 +178,7 @@ def main(args):
 
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i % 4 == 0:
-            validate(0, model.person_id, args=args)
+            validate(0, model.person_id, args=args, mode='all')
         model.person_id.train()
         torch.save(model.person_id.state_dict(), f"checkpoint/reid_last.pt")
         if i % 10 == 0 and dist.is_primary():
