@@ -99,8 +99,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
             loader.set_description(
                 (
-                    f"e: {epoch + 1}; l: {loss_Re.item():.3f}({loss / mse_n:.5f}); "
-                    f"id: {loss_id_real.item():.3f};({id_sum / mse_n:.5f}); "
+                    f"e: {epoch + 1}; l: {loss_Re.item():.3f}({loss / (i+1):.5f}); "
+                    f"id: {loss_id_real.item():.3f};({id_sum / (i+1):.5f}); "
                     f"tr: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
                     f"p: ({correct * 100 / mse_n:.2f}); "
 
