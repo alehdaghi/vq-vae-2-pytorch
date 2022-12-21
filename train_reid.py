@@ -43,7 +43,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
     criterion = nn.MSELoss()
     triplet_criterion = TripletLoss()
-
+    ranking_loss = nn.MarginRankingLoss(margin=5)
 
     mse_sum = 0
     mse_n = 0
@@ -54,6 +54,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
     ir_sum = 0
     correct = 0
+
+    eigen_inter, eigen_intra, svd_sum = 0 , 0, 0
+
 
     model.person_id.requires_grad_(True)
     model.person_id.train()
@@ -75,11 +78,20 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         loss_id_real = torch.nn.functional.cross_entropy(score, labels)
         loss_triplet, _ = triplet_criterion(feat, labels)
-        var = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).var(dim=1)
-        mean = einops.rearrange(feat, '(n p) ... -> n p ...', p=args.num_pos).mean(dim=1)
+
+        F = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=2)
+        var = F.var(dim=1)
+        mean = F.mean(dim=1)
+
+        _, S_inter, _ = torch.pca_lowrank(mean, q=args.batch_size, center=True, niter=3)
+        _, S_intra, _ = torch.pca_lowrank(F, q=2 * args.num_pos, center=True, niter=3)
+        # eigen_inter += S_inter.mean().item()
+        # eigen_intra += S_intra.mean().item()
+        svd_loss = ranking_loss(S_inter.mean(), S_intra.mean(), torch.tensor(1))
+        svd_sum += svd_loss.item()
 
         optimizer_reid.zero_grad()
-        loss_Re = loss_id_real + loss_triplet #+ var.mean()
+        loss_Re = loss_id_real + loss_triplet + S_intra.mean() + svd_loss #+ var.mean()
         loss_Re.backward()
         optimizer_reid.step()
 
@@ -102,6 +114,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                     f"e: {epoch + 1}; l: {loss_Re.item():.3f}({loss / (i+1):.5f}); "
                     f"id: {loss_id_real.item():.3f};({id_sum / (i+1):.5f}); "
                     f"tr: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
+                    f"svd: {svd_loss.item():.3f}({svd_sum / (i+1):.5f}); "
                     f"p: ({correct * 100 / mse_n:.2f}); "
 
                 )
