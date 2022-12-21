@@ -124,7 +124,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     writer.add_scalar("ID_loss/train", id_sum / len(loader), epoch)
     writer.add_scalar("Rec_loss/train", mse_sum / len(loader), epoch)
     writer.add_scalar("Feat_loss/train", feat_sum / len(loader), epoch)
-    writer.add_scalar("ID_ir/train", ir_sum / len(loader), epoch)
+    writer.add_scalar("svd/train", svd_sum / len(loader), epoch)
+
 
 def main(args):
     device = "cuda"
