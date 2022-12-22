@@ -43,7 +43,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
     criterion = nn.MSELoss()
     triplet_criterion = TripletLoss()
-    ranking_loss = nn.MarginRankingLoss(margin=15)
+    ranking_loss = nn.MarginRankingLoss(margin=1)
 
     mse_sum = 0
     mse_n = 0
