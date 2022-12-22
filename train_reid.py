@@ -105,7 +105,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         id_sum += id_err
         feat_err = loss_triplet.item()
         feat_sum += feat_err
-        feat_size += feat.sum()/bs
+        feat_size += feat.sum()/(bs * model.person_id.pool_dim)
 
         if dist.is_primary():
             lr = optimizer.param_groups[0]["lr"]
