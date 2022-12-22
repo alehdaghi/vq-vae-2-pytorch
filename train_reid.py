@@ -52,7 +52,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     id_sum = 0
     feat_sum = 0
 
-    ir_sum = 0
+    feat_size = 0
     correct = 0
 
     eigen_inter, eigen_intra, svd_sum = 0 , 0, 0
@@ -87,7 +87,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         _, S_intra, _ = torch.pca_lowrank(F, q=2 * args.num_pos, center=True, niter=3)
         # eigen_inter += S_inter.mean().item()
         # eigen_intra += S_intra.mean().item()
-        svd_loss = ranking_loss(S_inter.mean(), S_intra.mean(), torch.tensor(1))
+        # svd_loss = ranking_loss(S_inter.mean(), S_intra.mean(), torch.tensor(1))
+        svd_loss = ranking_loss(S_inter[-1, None], S_intra[:, 0], torch.tensor([1]).cuda())
         svd_sum += svd_loss.item()
 
         optimizer_reid.zero_grad()
@@ -104,18 +105,19 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         id_sum += id_err
         feat_err = loss_triplet.item()
         feat_sum += feat_err
-        ir_sum += 0
+        feat_size += feat.sum()/bs
 
         if dist.is_primary():
             lr = optimizer.param_groups[0]["lr"]
 
             loader.set_description(
                 (
-                    f"e: {epoch + 1}; l: {loss_Re.item():.3f}({loss / (i+1):.5f}); "
-                    f"id: {loss_id_real.item():.3f};({id_sum / (i+1):.5f}); "
+                    f"e: {epoch + 1}; l: {loss_Re.item():.3f}({loss / (i+1):.3f}); "
+                    f"id: {loss_id_real.item():.3f};({id_sum / (i+1):.3f}); "
                     f"tr: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
-                    f"svd: {svd_loss.item():.3f}({svd_sum / (i+1):.5f}); "
+                    f"svd: {svd_loss.item():.3f}({svd_sum / (i+1):.3f}); "
                     f"p: ({correct * 100 / mse_n:.2f}); "
+                    f"s:({feat_size/(i+1):.2f})"
 
                 )
             )
