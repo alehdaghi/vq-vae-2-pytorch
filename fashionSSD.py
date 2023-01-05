@@ -6,19 +6,19 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 import torch
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-import torchvision.models.detection.mask_rcnn as mask_rcnn
+# from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+# import torchvision.models.detection.mask_rcnn as mask_rcnn
 from vision.engine import *
 import distributed as dist
 import cv2
 import numpy as np
 import resource
 from PIL import Image
+from ssd.utils import *
 
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
 
-img_h, img_w = 288, 144
 
 normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 trans = transforms.Compose([
@@ -28,7 +28,7 @@ trans = transforms.Compose([
 
 
 class annToTarget():
-    def __init__(self, coco):
+    def __init__(self, coco=None):
         self.coco = coco
 
     def __call__(self, ann):
@@ -39,23 +39,29 @@ class annToTarget():
         area = torch.IntTensor(N)
         iscrowd = torch.IntTensor(N)
         masks = []  # torch.empty((N, 600, 400), dtype=torch.uint8)
-        for i, obj in enumerate(ann):
+        i = 0
+        for obj in ann:
+            if obj['bbox'][2] < 1 or obj['bbox'][3] < 1:
+                N = N - 1
+                continue
+
             boxes[i] = torch.FloatTensor(obj['bbox'])
             labels[i] = obj['category_id']
             image_id[0] = obj['image_id']
             area[i] = obj['area']
             iscrowd[i] = obj['iscrowd']
-            masks.append(torch.from_numpy(self.coco.annToMask(obj)))
+            i = i+1
+            # masks.append(torch.from_numpy(self.coco.annToMask(obj)))
 
-        boxes[:, 2:] += boxes[:, :2]
+        boxes[:, 2:] += boxes[:, :2] # xywh -> xyXY
 
         dict = {
-            'boxes': boxes,
-            'labels': labels - 1,
+            'boxes': boxes[:N],
+            'labels': labels[:N] - 1,
             'image_id': image_id,
-            "area": area,
-            "iscrowd": iscrowd,
-            "masks": torch.stack(masks) if N > 0 else torch.empty((N, 300, 200))
+            "area": area[:N],
+            "iscrowd": iscrowd[:N],
+            # "masks": torch.stack(masks) if N > 0 else torch.empty((N, 300, 200))
 
         }
         return dict
@@ -64,22 +70,28 @@ class annToTarget():
 def collate_fn(batch):
     return tuple(zip(*batch))
 
+img_h, img_w = 400 , 300
+dboxes = dboxes300_coco()
+train_trans = SSDTransformer(dboxes, (img_h, img_w), val=False)
+val_trans = SSDTransformer(dboxes, (img_h, img_w), val=True)
+
+
 
 # local = '/media/mahdi/2e197b57-e3e6-4185-8d1b-5fbb1c3b8b55/datasets/modanet/'
 def build_loaders(args):
     print("build loaders")
     path = args.modanet
     global dataset, testSet
-    dataset = dset.CocoDetection(root=path + '/images', annFile=path + '/annotations/modanet2018_instances_train.json'
-                                 )
-    dataset.transforms = torchvision.datasets.vision.StandardTransform(trans, annToTarget(dataset.coco))
+    # dataset = COCODetection(img_folder=path + '/data', annotate_file=path + '/instances_train.json',
+    #                         transform=train_trans)
+    dataset = dset.CocoDetection(root=path + '/data', annFile=path + '/instances_train.json')
+    dataset.transforms = torchvision.datasets.vision.StandardTransform(trans, annToTarget())
 
-    testSet = dset.CocoDetection(root=path + '/images', annFile=path + '/annotations/instances_val.json',
-                                 )
-    testSet.transforms = torchvision.datasets.vision.StandardTransform(trans, annToTarget(testSet.coco))
+    testSet = COCODetection(img_folder=path + '/data', annotate_file=path + '/instances_val.json',
+                            transform=train_trans)
+    testSet.transforms = torchvision.datasets.vision.StandardTransform(trans, annToTarget())
 
-    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn,
-                        num_workers=args.workers)
+    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn,num_workers=args.workers)
     test_loader = DataLoader(testSet, batch_size=3 * args.batch_size, shuffle=True, collate_fn=collate_fn,
                              num_workers=args.workers)
     return loader, test_loader
@@ -92,7 +104,7 @@ def train(args, model, device, loader, test_loader):
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
     num_epochs = args.epoch
-    eval = evaluate(model, test_loader, device=device)
+    # eval = evaluate(model, test_loader, device=device)
     for epoch in range(args.start, args.epoch):
         # train for one epoch, printing every 10 iterations
         train_one_epoch(model, optimizer, loader, device, epoch, print_freq=10)
@@ -102,22 +114,15 @@ def train(args, model, device, loader, test_loader):
 
         if dist.is_primary():
             if args.distributed:
-                torch.save(model.module.state_dict(), f"rcn/rcn_{str(epoch + 1).zfill(3)}.pt")
+                torch.save(model.module.state_dict(), f"models/ssd_{str(epoch + 1).zfill(3)}.pt")
             else:
-                torch.save(model.state_dict(), f"rcn/rcn_{str(epoch + 1).zfill(3)}.pt")
+                torch.save(model.state_dict(), f"model/ssd_{str(epoch + 1).zfill(3)}.pt")
         # evaluate(model, test_loader, device=device)
 
     # torch.save(model.state_dict(), 'rcnn-last.pt')
 
 def build_model():
-    grcnn = torchvision.models.detection.transform.GeneralizedRCNNTransform(min_size=200, max_size=300,
-                                                                            image_mean=[0.485, 0.456, 0.406],
-                                                                            image_std=[0.229, 0.224, 0.225])
-    model = mask_rcnn.maskrcnn_resnet50_fpn_v2(weights=mask_rcnn.MaskRCNN_ResNet50_FPN_V2_Weights.COCO_V1)
-    in_features = model.roi_heads.box_predictor.cls_score.in_features
-    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes=13)
-    model.roi_heads.mask_predictor = mask_rcnn.MaskRCNNPredictor(256, 256, 13)
-    model.transform = grcnn
+    model = torchvision.models.detection.ssdlite320_mobilenet_v3_large(num_classes=13)
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model.to(device)
     return model
@@ -157,6 +162,7 @@ def testVis(imgPath, model, cats):
 
 def main(args):
     print('main')
+    os.makedirs('./models', exist_ok=True)
     args.distributed = dist.get_world_size() > 1
     model = build_model()
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -164,6 +170,7 @@ def main(args):
         load_model(model, args.resume)
 
     loader, test_loader = build_loaders(args)
+
     # testVis("/home/mahdi/PycharmProjects/Datasets/SYSU-MM01/cam5/0015/0001.jpg", model,
     #         loader.dataset.coco.cats)
     #

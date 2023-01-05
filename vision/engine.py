@@ -81,7 +81,7 @@ def evaluate(model, data_loader, device):
     iou_types = _get_iou_types(model)
     coco_evaluator = CocoEvaluator(coco, iou_types)
 
-    for images, targets in metric_logger.log_every(data_loader, 100, header):
+    for images, targets in metric_logger.log_every(data_loader, 20, header):
         images = list(img.to(device) for img in images)
 
         torch.cuda.synchronize()
@@ -107,3 +107,24 @@ def evaluate(model, data_loader, device):
     coco_evaluator.summarize()
     torch.set_num_threads(n_threads)
     return coco_evaluator
+
+import numpy as np
+import cv2
+def showOutput(outputs, targets, dataset, k):
+    img = np.array(dataset._load_image(targets[k]['image_id'].item()))
+    imgCV = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    for i in range(len(outputs[k]['boxes'])):
+        item = outputs[k]
+        s = item['scores'][i]
+        if s < 0.5:
+            continue
+        m = item['masks'][i].expand(3, -1, -1).permute(1, 2, 0).numpy()
+        l = item['labels'][i].item() + 1
+        b = item['boxes'][i]
+        x, y, w, h = b.numpy().astype(np.int)
+        # imgCV = (imgCV + (255 *  m).astype(np.uint8))
+        cv2.rectangle(imgCV, (x, y), (w, h), (255, 0, 0), 2)
+        label = dataset.coco.cats[l]['name']
+        cv2.putText(imgCV, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36, 255, 12), 2)
+    cv2.imshow("a", imgCV)
+    cv2.waitKey()
