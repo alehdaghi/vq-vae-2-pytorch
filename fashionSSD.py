@@ -98,9 +98,9 @@ def build_loaders(args):
 
 def train(args, model, device, loader, test_loader):
     params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(params, lr=0.005, momentum=0.9, weight_decay=0.0005, nesterov=True)
+    optimizer = torch.optim.SGD(params, lr=0.05, momentum=0.9, weight_decay=0.0005, nesterov=True)
 
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
     num_epochs = args.epoch
     eval = evaluate(model, test_loader, device=device)
