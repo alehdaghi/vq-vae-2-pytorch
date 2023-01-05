@@ -103,7 +103,8 @@ def train(args, model, device, loader, test_loader):
     lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
 
     num_epochs = args.epoch
-    # eval = evaluate(model, test_loader, device=device)
+    eval = evaluate(model, test_loader, device=device)
+    print(eval)
     for epoch in range(args.start, args.epoch):
         # train for one epoch, printing every 10 iterations
         train_one_epoch(model, optimizer, loader, device, epoch, print_freq=10)
@@ -115,7 +116,7 @@ def train(args, model, device, loader, test_loader):
             if args.distributed:
                 torch.save(model.module.state_dict(), f"models/ssd_{str(epoch + 1).zfill(3)}.pt")
             else:
-                torch.save(model.state_dict(), f"model/ssd_{str(epoch + 1).zfill(3)}.pt")
+                torch.save(model.state_dict(), f"models/ssd_{str(epoch + 1).zfill(3)}.pt")
         # evaluate(model, test_loader, device=device)
 
     # torch.save(model.state_dict(), 'rcnn-last.pt')
