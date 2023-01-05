@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 import resource
 from PIL import Image
-from ssd.utils import *
+# from ssd.utils import *
 
 rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
 resource.setrlimit(resource.RLIMIT_NOFILE, (4096, rlimit[1]))
@@ -71,9 +71,9 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 img_h, img_w = 400 , 300
-dboxes = dboxes300_coco()
-train_trans = SSDTransformer(dboxes, (img_h, img_w), val=False)
-val_trans = SSDTransformer(dboxes, (img_h, img_w), val=True)
+# dboxes = dboxes300_coco()
+# train_trans = SSDTransformer(dboxes, (img_h, img_w), val=False)
+# val_trans = SSDTransformer(dboxes, (img_h, img_w), val=True)
 
 
 
@@ -87,8 +87,7 @@ def build_loaders(args):
     dataset = dset.CocoDetection(root=path + '/data', annFile=path + '/instances_train.json')
     dataset.transforms = torchvision.datasets.vision.StandardTransform(trans, annToTarget())
 
-    testSet = COCODetection(img_folder=path + '/data', annotate_file=path + '/instances_val.json',
-                            transform=train_trans)
+    testSet = dset.CocoDetection(root=path + '/data', annFile=path + '/instances_val.json')
     testSet.transforms = torchvision.datasets.vision.StandardTransform(trans, annToTarget())
 
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn,num_workers=args.workers)
