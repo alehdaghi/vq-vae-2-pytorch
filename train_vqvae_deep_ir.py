@@ -70,11 +70,11 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         model.person_id.requires_grad_(True)
         model.person_id.train()
         feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
-        m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
-        zeros = actMap < (m - 0.1)
-        ones = actMap > (m + 0.02)
-        actMap[zeros] = 0
-        actMap[ones] = 1
+        # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
+        # zeros = actMap < (m - 0.1)
+        # ones = actMap > (m + 0.02)
+        # actMap[zeros] = 0
+        # actMap[ones] = 1
 
         upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
@@ -104,7 +104,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
 
         rgb_b, rgb_t = model.encode_content(img1)
-        rgb_b_f, rgb_t_f = model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] * actMap[bs:], feat2d[bs:] * actMap[bs:])
+        rgb_b_f, rgb_t_f = model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
         rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
         ir_fake = model.decode(rgb_content).expand(-1,3,-1,-1)
 
@@ -115,7 +115,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         pos = (featIR - feat[bs:].detach()).pow(2).sum(dim=1)
         neg = (featIR - feat[:bs].detach()).detach().pow(2).sum(dim=1)
-        loss_feat_ir = F.margin_ranking_loss(pos , neg, torch.ones_like(pos), margin=0.01) #criterion(featIR, feat[bs:].detach())
+        loss_feat_ir = F.margin_ranking_loss(pos, neg, torch.ones_like(pos), margin=0.01) #criterion(featIR, feat[bs:].detach())
         loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
 
@@ -254,7 +254,7 @@ def main(args):
 
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i % 4 == 0:
-            validate(0, model.person_id, args=args)
+            validate(0, model.person_id, args=args, mode='all')
         model.person_id.train()
         torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir_last.pt")
         if i % 10 == 0 and dist.is_primary():
