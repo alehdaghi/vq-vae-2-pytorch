@@ -168,7 +168,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 rgb = img1[index]
                 ir = img2[index]
                 ir_rec = ir_reconst[index]
-                inter = ir_fake
+                inter = ir_fake[index]
 
 
                 # with torch.no_grad():
