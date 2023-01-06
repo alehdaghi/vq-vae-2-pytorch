@@ -114,7 +114,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
 
         pos = (featIR - feat[bs:].detach()).pow(2).sum(dim=1)
-        neg = (featIR - feat[:bs].detach()).detach().pow(2).sum(dim=1)
+        neg = (featIR - feat[:bs].detach().detach()).pow(2).sum(dim=1)
         loss_feat_ir = F.margin_ranking_loss(pos, neg, torch.ones_like(pos), margin=0.01) #criterion(featIR, feat[bs:].detach())
         loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
