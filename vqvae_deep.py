@@ -193,6 +193,7 @@ class VQVAE_Deep(nn.Module):
             embed_dim=256,
             n_embed=512,
             decay=0.99,
+            out_channel=3
     ):
         super().__init__()
 
@@ -211,7 +212,7 @@ class VQVAE_Deep(nn.Module):
 
         self.dec = Decoder(
             embed_dim + embed_dim,
-            in_channel,
+            out_channel,
             channel,
             n_res_block,
             n_res_channel,
