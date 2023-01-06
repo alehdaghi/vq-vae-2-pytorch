@@ -103,20 +103,20 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
 
 
-        rgb_b, rgb_t = model.encode_content(img1)
-        rgb_b_f, rgb_t_f = model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
-        rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
-        ir_fake = model.decode(rgb_content).expand(-1,3,-1,-1)
+        # rgb_b, rgb_t = model.encode_content(img1)
+        # rgb_b_f, rgb_t_f = model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
+        # rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
+        # ir_fake = model.decode(rgb_content).expand(-1,3,-1,-1)
 
-        model.person_id.requires_grad_(False)
-        model.person_id.eval()
-        featIR, score, _, _, _ = model.person_id(xRGB=None, xIR=ir_fake, modal=2, with_feature=True)
-        loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
+        # model.person_id.requires_grad_(False)
+        # model.person_id.eval()
+        # featIR, score, _, _, _ = model.person_id(xRGB=None, xIR=ir_fake, modal=2, with_feature=True)
+        # loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
 
-        pos = (featIR - feat[bs:].detach()).pow(2).sum(dim=1)
-        neg = (featIR - feat[:bs].detach().detach()).pow(2).sum(dim=1)
-        loss_feat_ir = F.margin_ranking_loss(pos, neg, torch.ones_like(pos), margin=0.01) #criterion(featIR, feat[bs:].detach())
-        loss_Re_Ir = loss_id_real_ir + loss_feat_ir
+        # pos = (featIR - feat[bs:].detach()).pow(2).sum(dim=1)
+        # neg = (featIR - feat[:bs].detach().detach()).pow(2).sum(dim=1)
+        # loss_feat_ir = F.margin_ranking_loss(pos, neg, torch.ones_like(pos), margin=0.01) #criterion(featIR, feat[bs:].detach())
+        # loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
 
         recon_loss = criterion(ir_reconst, img2)
@@ -128,7 +128,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
 
         optimizer.zero_grad()
-        (loss_G + loss_Re_Ir).backward()
+        loss_G.backward()
+        # (loss_G + loss_Re_Ir).backward()
         if scheduler is not None:
             scheduler.step()
         optimizer.step()
