@@ -122,7 +122,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         recon_loss = criterion(ir_reconst, img2)
         # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
         #                   criterion(gray_content_other, rgb_content_itself)
-        latent_loss = (latent_loss + latent_loss_ir).mean()
+        latent_loss = (latent_loss).mean()
         loss_G = (recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
 
 
