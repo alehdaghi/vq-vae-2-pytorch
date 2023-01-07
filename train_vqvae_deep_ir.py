@@ -103,33 +103,32 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
 
 
-        # rgb_b, rgb_t = model.encode_content(img1)
-        # rgb_b_f, rgb_t_f = model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
-        # rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
-        # ir_fake = model.decode(rgb_content).expand(-1,3,-1,-1)
+        rgb_b, rgb_t = model.encode_content(img1)
+        rgb_b_f, rgb_t_f = model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
+        rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
+        ir_fake = model.decode(rgb_content).expand(-1,3,-1,-1)
 
-        # model.person_id.requires_grad_(False)
-        # model.person_id.eval()
-        # featIR, score, _, _, _ = model.person_id(xRGB=None, xIR=ir_fake, modal=2, with_feature=True)
-        # loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
+        model.person_id.requires_grad_(False)
+        model.person_id.eval()
+        featIR, score, _, _, _ = model.person_id(xRGB=None, xIR=ir_fake, modal=2, with_feature=True)
+        loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
 
-        # pos = (featIR - feat[bs:].detach()).pow(2).sum(dim=1)
-        # neg = (featIR - feat[:bs].detach().detach()).pow(2).sum(dim=1)
-        # loss_feat_ir = F.margin_ranking_loss(pos, neg, torch.ones_like(pos), margin=0.01) #criterion(featIR, feat[bs:].detach())
-        # loss_Re_Ir = loss_id_real_ir + loss_feat_ir
-        loss_Re_Ir = loss_feat_ir = torch.Tensor([0])
+        pos = (featIR - feat[bs:].detach()).pow(2).sum(dim=1)
+        neg = (featIR - feat[:bs].detach().detach()).pow(2).sum(dim=1)
+        loss_feat_ir = F.margin_ranking_loss(pos, neg, torch.ones_like(pos), margin=0.01) #criterion(featIR, feat[bs:].detach())
+        loss_Re_Ir = loss_id_real_ir + loss_feat_ir
+
 
         recon_loss = criterion(ir_reconst, img2)
         # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
         #                   criterion(gray_content_other, rgb_content_itself)
-        latent_loss = (latent_loss).mean()
+        latent_loss = (latent_loss + latent_loss_ir).mean()
         loss_G = (recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
 
 
 
         optimizer.zero_grad()
-        loss_G.backward()
-        # (loss_G + loss_Re_Ir).backward()
+        (10 * loss_G + loss_Re_Ir).backward()
         if scheduler is not None:
             scheduler.step()
         optimizer.step()
@@ -169,7 +168,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 rgb = img1[index]
                 ir = img2[index]
                 ir_rec = ir_reconst[index]
-                inter = ir #ir_fake[index]
+                inter = ir_fake[index]
 
 
                 # with torch.no_grad():
@@ -177,7 +176,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 # model.train()
 
                 utils.save_image(
-                    invTrans(torch.cat([rgb, ir, ir_rec,
+                    invTrans(torch.cat([rgb, inter, ir, ir_rec,
                                         2 * (upMask[index].expand(-1, 3, -1, -1)) - 1], 0)),
                     f"sample-deep-transfer/ir_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(rgb),
