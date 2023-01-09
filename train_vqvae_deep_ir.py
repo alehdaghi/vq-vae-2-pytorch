@@ -252,7 +252,7 @@ def main(args):
                 # model.person_id = embed_net(dataset.num_class, 'off', 'off', arch='resnet50').to(device)
             else:
                 best_mAP = checkpoint['mAP']
-                best_mAP = checkpoint['epoch']
+                best_i = checkpoint['epoch']
                 model.load_state_dict(checkpoint["net"], strict=True)
             print(f'==> loaded checkpoint {args.resume} (epoch {best_i} mAP {best_mAP})')
         else:
