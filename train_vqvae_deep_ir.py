@@ -216,6 +216,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 def main(args):
     device = "cuda"
     best_mAP = 0
+    best_i = 0
     args.distributed = dist.get_world_size() > 1
 
     transform = transforms.Compose(
@@ -251,9 +252,9 @@ def main(args):
                 # model.person_id = embed_net(dataset.num_class, 'off', 'off', arch='resnet50').to(device)
             else:
                 best_mAP = checkpoint['mAP']
+                best_mAP = checkpoint['epoch']
                 model.load_state_dict(checkpoint["net"], strict=True)
-            print('==> loaded checkpoint {} (epoch)'
-                  .format(args.resume))
+            print(f'==> loaded checkpoint {args.resume} (epoch {best_i} mAP {best_mAP})')
         else:
             print('==> no checkpoint found at {}'.format(args.resume))
 
@@ -275,7 +276,7 @@ def main(args):
             warmup_proportion=0.05,
         )
 
-    best_i = 0
+
     for i in range(args.start, args.epoch):
         sampler = dataset.samplize(args.batch_size, args.num_pos)
         loader = DataLoader(
