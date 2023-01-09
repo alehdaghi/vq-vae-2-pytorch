@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 import einops
 
 from torchvision import datasets, transforms, utils
+import torchvision.transforms as T
 
 from tqdm import tqdm
 
@@ -28,6 +29,31 @@ invTrans = transforms.Compose([
     transforms.Normalize(mean=[0., 0., 0.], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]),
     transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
 ])
+
+
+class RandomCropBoxes:
+    def __init__(self, n, size):
+        self.n = n
+        self.size = size
+
+    def __call__(self, imgs):
+        h, w = self.size, self.size
+        H, W = imgs.shape[-2:]
+        for img in imgs:
+            y, x = np.random.randint(0, H - h, self.n), np.random.randint(0, W - w, self.n)
+            for xx,yy in zip(x,y):
+                img[:, yy:yy + h, xx:xx + w] = 0
+        return imgs
+
+
+
+
+aug_transforms = transforms.Compose([
+    # T.ColorJitter(brightness=.15, hue=.13),
+    T.ElasticTransform(alpha=25.0),
+    RandomCropBoxes(n=15, size=20)
+])
+
 
 def random_pair(args):
     l = np.arange(args.batch_size) * args.num_pos
@@ -62,14 +88,15 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         img2 = img2.to(device)
         label1 = label1.to(device)
         label2 = label2.to(device)
-
         labels = torch.cat((label1, label2), 0)
 
+        aug_rgb = aug_transforms(img1)
+        aug_ir = aug_transforms(img2)
         bs = img1.size(0)
 
         model.person_id.requires_grad_(True)
         model.person_id.train()
-        feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
+        feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, modal=0, with_feature=True)
         # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
         # zeros = actMap < (m - 0.1)
         # ones = actMap > (m + 0.02)
@@ -161,7 +188,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 # model.eval()
                 index = np.random.choice(np.arange(bs), min(bs, sample_size), replace=False)
 
-                rgb = img1[index]
+                rgb = aug_rgb[index]
                 ir = img2[index]
                 ir_rec = ir_reconst[index]
                 rgb2ir = inter[index]
