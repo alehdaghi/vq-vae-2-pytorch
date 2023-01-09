@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from data_loader import SYSUData
 from loss import TripletLoss
-from model import ModelAdaptive, ModelAdaptive_Deep
+from model import ModelAdaptive, ModelAdaptive_Deep, embed_net
 from reid_tools import validate
 
 from vqvae_deep import VQVAE_Deep as VQVAE
@@ -88,14 +88,14 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         ir_reconst = model.decode(ir_content_itself).expand(-1,3,-1,-1)
 
         rgb_b, rgb_t = model.encode_content(img1)
-        rgb_b_f, rgb_t_f = model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
+        rgb_b_f, rgb_t_f = rgb_b, rgb_t#model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
         rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
         inter = model.decode(rgb_content).expand(-1,3,-1,-1)
 
         feat_fake, score_fake, _, _, _ = model.person_id(xRGB=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
         loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
-        loss_triplet_fake, _ = triplet_criterion(feat, labels)
-        modal_free_loss = criterion(feat_fake, feat.detach())
+        loss_triplet_fake, _ = triplet_criterion(feat_fake, labels)
+        modal_free_loss = criterion(feat_fake, feat)
         loss_fake = loss_id_fake + modal_free_loss
 
         optimizer_reid.zero_grad()
@@ -174,7 +174,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 utils.save_image(
                     invTrans(torch.cat([rgb, rgb2ir, ir, ir_rec,
                                         2 * (upMask[index].expand(-1, 3, -1, -1)) - 1], 0)),
-                    f"sample-deep-transfer/ir_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
+                    f"sample-deep-transfer/ir50_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(rgb),
                     # normalize=True,
                     range=(-1, 1),
@@ -185,9 +185,10 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     writer.add_scalar("Feat_loss/train", feat_sum / len(loader), epoch)
     writer.add_scalar("ID_ir/train", ir_sum / len(loader), epoch)
 
+
 def main(args):
     device = "cuda"
-
+    best_mAP = 0
     args.distributed = dist.get_world_size() > 1
 
     transform = transforms.Compose(
@@ -202,7 +203,8 @@ def main(args):
     dataset = SYSUData(args.path, transform=transform)
     loader_batch = args.batch_size * args.num_pos
     vq_vae = VQVAE(out_channel=1).to(device)
-    model = ModelAdaptive_Deep(dataset.num_class, vq_vae).to(device)
+    model = ModelAdaptive_Deep(dataset.num_class, vq_vae, arch='resnet50').to(device)
+
 
     if args.distributed:
         model = nn.parallel.DistributedDataParallel(
@@ -216,7 +218,13 @@ def main(args):
         if os.path.isfile(model_path):
             print('==> loading checkpoint {}'.format(args.resume))
             checkpoint = torch.load(model_path)
-            model.load_state_dict(checkpoint, strict=False)
+
+            if "net" not in checkpoint:
+                model.load_state_dict(checkpoint, strict=False)
+                # model.person_id = embed_net(dataset.num_class, 'off', 'off', arch='resnet50').to(device)
+            else:
+                best_mAP = checkpoint['mAP']
+                model.load_state_dict(checkpoint["net"], strict=True)
             print('==> loaded checkpoint {} (epoch)'
                   .format(args.resume))
         else:
@@ -240,7 +248,7 @@ def main(args):
             warmup_proportion=0.05,
         )
 
-
+    best_i = 0
     for i in range(args.start, args.epoch):
         sampler = dataset.samplize(args.batch_size, args.num_pos)
         loader = DataLoader(
@@ -250,11 +258,22 @@ def main(args):
 
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i % 4 == 0:
-            validate(0, model.person_id, args=args, mode='all')
+            mAP = validate(0, model.person_id, args=args, mode='all')
+            if mAP > best_mAP:
+                best_mAP = mAP
+                best_i = i
+                obj = {
+                    "mAP" : best_mAP,
+                    "epoch": best_i,
+                    "net": model.state_dict()
+                }
+                torch.save(obj, f"checkpoint-deep-transfer/vqvae_ir50_best.pt")
+            print('best mAP: {:.2%}| epoch: {}'.format(best_mAP, best_i))
+
         model.person_id.train()
-        torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir_last.pt")
+        torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir50_last.pt")
         if i % 10 == 0 and dist.is_primary():
-            torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir_{str(i + 1).zfill(3)}.pt")
+            torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir50_{str(i + 1).zfill(3)}.pt")
 
 
 
