@@ -426,6 +426,13 @@ class ModelAdaptive_Deep(nn.Module):
         ct = self.resblocks2(f) + f + ct
         return cb, ct
 
+    def encAndDec(self, img):
+        enc_b, enc_t = self.encode_content(img)
+        enc_b_f, enc_t_f = enc_b, enc_t  # model.fuse(enc_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
+        img_content, _ = self.quantize_content(enc_b_f, enc_t_f)
+        rec = self.decode(img_content).expand(-1, 3, -1, -1)
+        return rec
+
     def decodeWithStyle(self, content, style):
         self.fusion(content, style)
 

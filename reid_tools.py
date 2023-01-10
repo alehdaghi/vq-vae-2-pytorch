@@ -48,7 +48,7 @@ def load_data(args, test_batch=50, data_path='../Datasets/SYSU-MM01/', mode = 'V
 
 def test(epoch, net, test_mode = [1, 2]):
     # switch to evaluation mode
-    pool_dim = net.pool_dim
+    pool_dim = net.person_id.pool_dim
     net.eval()
     print('Extracting Gallery Feature...')
     start = time.time()
@@ -58,15 +58,16 @@ def test(epoch, net, test_mode = [1, 2]):
     with torch.no_grad():
         for batch_idx, (input, label, cam) in enumerate(gall_loader):
             batch_num = input.size(0)
-            input = Variable(input.cuda())
-            feat, feat_att = net(input, input, modal=test_mode[0])
+            input = input.cuda()
+            # input = net.encAndDec(input)
+            feat, feat_att = net.person_id(input, input, modal=test_mode[0])
             gall_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             gall_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
             ptr = ptr + batch_num
     print('Extracting Time:\t {:.3f}'.format(time.time() - start))
 
     # switch to evaluation
-    net.eval()
+
     print('Extracting Query Feature...')
     start = time.time()
     ptr = 0
@@ -77,8 +78,10 @@ def test(epoch, net, test_mode = [1, 2]):
         for batch_idx, (input, label, cam) in enumerate(query_loader):
             batch_num = input.size(0)
             input = Variable(input.cuda())
+
             start1 = time.time()
-            feat, feat_att = net(input, input, modal=test_mode[1])
+            # input = net.encAndDec(input)
+            feat, feat_att = net.person_id(input, input, modal=test_mode[1])
             time_inference += (time.time() - start1)
             #print('Extracting Time:\t {:.3f} len={:d}'.format(time.time() - start1, len(input)))
 
@@ -105,7 +108,8 @@ def test(epoch, net, test_mode = [1, 2]):
 
     return cmc, mAP, mINP, cmc_att, mAP_att, mINP_att
 
-def validate(epoch, model, args, mode = 'Vis'):
+def validate(epoch, net, args, mode = 'Vis'):
+    model = net.person_id
     global best_acc, best_epoch
 
     if gall_loader is None:
@@ -117,7 +121,7 @@ def validate(epoch, model, args, mode = 'Vis'):
     else:
         test_mode = [1, 2]
 
-    cmc, mAP, mINP, cmc_att, mAP_att, mINP_att = test(epoch, model, test_mode)
+    cmc, mAP, mINP, cmc_att, mAP_att, mINP_att = test(epoch, net, test_mode)
     # save model
     # if max(mAP, mAP_att) > best_acc:  # not the real best for sysu-mm01
     #     best_acc = max(mAP, mAP_att)
