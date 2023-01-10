@@ -113,7 +113,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         loss_triplet, _ = triplet_criterion(feat, labels)
         Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
         var = Feat.var(dim=1)
-        mean = Feat.mean(dim=1)
+        # mean = Feat.mean(dim=1)
 
         ir_b, ir_t = model.encode_content(aug_ir)
         ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
@@ -143,12 +143,17 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         model.person_id.requires_grad_(False)
         model.person_id.eval()
-        featIR, score, _, _, _ = model.person_id(xRGB=None, xIR=inter, modal=2, with_feature=True)
+        featG, score, _, _, _ = model.person_id(xRGB=None, xIR=inter, modal=2, with_feature=True)
         loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
 
-        pos = (featIR - feat[bs:].detach()).pow(2).sum(dim=1)
-        neg = (featIR - feat[:bs].detach().detach()).pow(2).sum(dim=1)
-        loss_feat_ir = F.margin_ranking_loss(pos, neg, torch.ones_like(pos), margin=0.01) #criterion(featIR, feat[bs:].detach())
+        centerV = einops.rearrange(feat[:bs], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+        centerT = einops.rearrange(feat[bs:], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+        centerG = einops.rearrange(featG, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+
+
+        pos = (centerG - centerT.detach()).pow(2).sum(dim=1)
+        neg = (centerG - centerV.detach().detach()).pow(2).sum(dim=1)
+        loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.1) #criterion(featG, feat[bs:].detach())
         loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
 
@@ -297,7 +302,7 @@ def main(args):
 
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i % 4 == 0:
-            mAP = validate(0, model.person_id, args=args, mode='all')
+            mAP = validate(0, model, args=args, mode='all')
             if mAP > best_mAP:
                 best_mAP = mAP
                 best_i = i
