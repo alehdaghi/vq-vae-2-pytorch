@@ -1,4 +1,5 @@
 import argparse
+import random
 import sys
 import os
 
@@ -42,16 +43,20 @@ class RandomCropBoxes:
         for img in imgs:
             y, x = np.random.randint(0, H - h, self.n), np.random.randint(0, W - w, self.n)
             for xx,yy in zip(x,y):
-                img[:, yy:yy + h, xx:xx + w] = 0
+                img[:, yy:yy + h, xx:xx + w] = random.random()
         return imgs
-
-
 
 
 aug_transforms = transforms.Compose([
     # T.ColorJitter(brightness=.15, hue=.13),
     T.ElasticTransform(alpha=25.0),
     RandomCropBoxes(n=15, size=20)
+])
+
+aug_transforms_rec = transforms.Compose([
+    # T.ColorJitter(brightness=.15, hue=.13),
+    T.ElasticTransform(alpha=25.0),
+    RandomCropBoxes(n=10, size=10)
 ])
 
 
@@ -114,7 +119,13 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
         ir_reconst = model.decode(ir_content_itself).expand(-1,3,-1,-1)
 
-        rgb_b, rgb_t = model.encode_content(img1)
+        w = torch.rand(bs, 3).cuda() + 0.01
+        w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
+        gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
+        invIndex = np.random.choice(bs, bs // 2, replace=False)
+        gray[invIndex] = 1 - gray[invIndex]
+
+        rgb_b, rgb_t = model.encode_content(gray)
         rgb_b_f, rgb_t_f = rgb_b, rgb_t#model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
         rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
         inter = model.decode(rgb_content).expand(-1,3,-1,-1)
@@ -192,14 +203,14 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 ir = aug_ir[index]
                 ir_rec = ir_reconst[index]
                 rgb2ir = inter[index]
-
+                g = gray[index]
 
                 # with torch.no_grad():
                 #     out, _ = model(sample)
                 # model.train()
 
                 utils.save_image(
-                    invTrans(torch.cat([rgb, rgb2ir, ir, ir_rec,
+                    invTrans(torch.cat([rgb, g, rgb2ir, ir, ir_rec,
                                         2 * (upMask[index].expand(-1, 3, -1, -1)) - 1], 0)),
                     f"sample-deep-transfer/ir50_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(rgb),
