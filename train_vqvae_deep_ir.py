@@ -110,7 +110,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         var = Feat.var(dim=1)
         mean = Feat.mean(dim=1)
 
-        ir_b, ir_t = model.encode_content(img2)
+        ir_b, ir_t = model.encode_content(aug_ir)
         ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
         ir_reconst = model.decode(ir_content_itself).expand(-1,3,-1,-1)
 
@@ -189,7 +189,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 index = np.random.choice(np.arange(bs), min(bs, sample_size), replace=False)
 
                 rgb = aug_rgb[index]
-                ir = img2[index]
+                ir = aug_ir[index]
                 ir_rec = ir_reconst[index]
                 rgb2ir = inter[index]
 
