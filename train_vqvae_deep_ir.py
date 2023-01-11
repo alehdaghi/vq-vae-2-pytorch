@@ -220,8 +220,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 rgb = aug_rgb[index]
                 ir = aug_ir[index]
                 ir_rec = ir_reconst[index]
-                rgb2ir = inter[index] if epoch < 20 else ir
-                g = gray[index] if epoch < 20 else rgb
+                rgb2ir = inter[index] if epoch >= 20 else ir
+                g = gray[index] if epoch >= 20 else rgb
 
                 # with torch.no_grad():
                 #     out, _ = model(sample)
