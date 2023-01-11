@@ -99,7 +99,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         aug_ir = aug_transforms(img2)
         bs = img1.size(0)
 
-        ir_b, ir_t = model.encode_content(img1)
+        ir_b, ir_t = model.encode_content(img1 if epoch < 30 else aug_ir )
         ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
         ir_reconst = model.decode(ir_content_itself).expand(-1, 3, -1, -1)
         recon_loss = criterion(ir_reconst, img2)
@@ -313,7 +313,7 @@ def main(args):
 
 
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
-        if i % 4 == 0:
+        if i >= 20 and i % 4 == 0:
             mAP = validate(0, model, args=args, mode='all')
             if mAP > best_mAP:
                 best_mAP = mAP
