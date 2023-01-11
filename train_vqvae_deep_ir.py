@@ -194,7 +194,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             mse_sum += part["mse_sum"]
             mse_n += part["mse_n"]
 
-        id_err = loss_Re #loss_id_fake.item() + loss_id_real.item() + loss_triplet.item() + loss_kl_fake
+        id_err = loss_Re.item() #loss_id_fake.item() + loss_id_real.item() + loss_triplet.item() + loss_kl_fake
         id_sum += id_err
         feat_err = loss_feat_ir.item()
         feat_sum += feat_err
