@@ -112,7 +112,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         loss_id_real = torch.nn.functional.cross_entropy(score, labels)
         loss_triplet, _ = triplet_criterion(feat, labels)
         Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
-        var = Feat.var(dim=1)
+        # var = Feat.var(dim=1)
         # mean = Feat.mean(dim=1)
 
         ir_b, ir_t = model.encode_content(aug_ir)
@@ -137,7 +137,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         loss_fake = loss_id_fake + modal_free_loss
 
         optimizer_reid.zero_grad()
-        loss_Re = loss_id_real + loss_triplet + loss_fake + var.mean()
+        loss_Re = loss_id_real + loss_triplet + loss_fake #+ var.mean()
         loss_Re.backward()
         optimizer_reid.step()
 
@@ -146,13 +146,20 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         featG, score, _, _, _ = model.person_id(xRGB=None, xIR=inter, modal=2, with_feature=True)
         loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
 
-        centerV = einops.rearrange(feat[:bs], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
-        centerT = einops.rearrange(feat[bs:], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
-        centerG = einops.rearrange(featG, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+        FV = einops.rearrange(feat[:bs].detach(), '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1) # reshaped to b * p
+        sV = FV.sum(dim=1, keepdim=True) # sum of features for each person
+        centerV = (sV - FV) / (args.num_pos - 1) # make centers of others for each person
 
+        FG = einops.rearrange(featG, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1)  # reshaped to b * p
+        sG = FG.sum(dim=1, keepdim=True)  # sum of features for each person
+        centerG_X = (sG - FG) / (args.num_pos - 1)  # make centers of others for each person
+
+        # centerV = einops.rearrange(feat[:bs], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+        centerT = einops.rearrange(feat[bs:], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+        centerG = FG.mean(dim=1)
 
         pos = (centerG - centerT.detach()).pow(2).sum(dim=1)
-        neg = (centerG - centerV.detach().detach()).pow(2).sum(dim=1)
+        neg = (centerG_X - centerV.detach()).pow(2).sum(dim=-1).mean(dim=1)
         loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.1) #criterion(featG, feat[bs:].detach())
         loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
