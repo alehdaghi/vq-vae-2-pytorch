@@ -93,6 +93,7 @@ class embed_net(nn.Module):
 
 
         self.visible_module = copy.deepcopy(self.thermal_module)
+        self.z_module = copy.deepcopy(self.thermal_module)
         self.l2norm = Normalize(2)
 
         self.bottleneck = nn.BatchNorm1d(self.pool_dim)
@@ -114,7 +115,7 @@ class embed_net(nn.Module):
 
     def forward(self, xRGB, xIR, xZ=None, modal=0, with_feature=False, with_camID=False):
         if modal == 0:
-            x1 = self.visible_module(xRGB)
+            x1 = self.visible_module(xRGB) if xRGB is not None else self.z_module(xRGB)
             x2 = self.thermal_module(xIR)
             x = torch.cat((x1, x2), 0)
             view_size = 2

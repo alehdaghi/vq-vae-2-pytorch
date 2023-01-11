@@ -102,6 +102,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         model.person_id.requires_grad_(True)
         model.person_id.train()
         feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, modal=0, with_feature=True)
+        featV, featI = torch.split(feat, bs)
         # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
         # zeros = actMap < (m - 0.1)
         # ones = actMap > (m + 0.02)
@@ -110,7 +111,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
         loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-        loss_triplet, _ = triplet_criterion(feat, labels)
+        loss_triplet = triplet_criterion(featV, label1)[0] + triplet_criterion(featI, label2)[0]
         Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
         # var = Feat.var(dim=1)
         # mean = Feat.mean(dim=1)
@@ -130,7 +131,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
         inter = model.decode(rgb_content).expand(-1,3,-1,-1)
 
-        feat_fake, score_fake, _, _, _ = model.person_id(xRGB=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
+        feat_fake, score_fake, _, _, _ = model.person_id(xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
         loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
         loss_triplet_fake, _ = triplet_criterion(feat_fake, labels)
         modal_free_loss = criterion(feat_fake, feat)
