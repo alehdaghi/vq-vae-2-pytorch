@@ -220,16 +220,15 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 rgb = aug_rgb[index]
                 ir = aug_ir[index]
                 ir_rec = ir_reconst[index]
-                rgb2ir = inter[index]
-                g = gray[index]
+                rgb2ir = inter[index] if epoch < 20 else ir
+                g = gray[index] if epoch < 20 else rgb
 
                 # with torch.no_grad():
                 #     out, _ = model(sample)
                 # model.train()
 
                 utils.save_image(
-                    invTrans(torch.cat([rgb, g, rgb2ir, ir, ir_rec,
-                                        2 * (upMask[index].expand(-1, 3, -1, -1)) - 1], 0)),
+                    invTrans(torch.cat([rgb, g, rgb2ir, ir, ir_rec], 0)),
                     f"sample-deep-transfer/ir50_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(rgb),
                     # normalize=True,
