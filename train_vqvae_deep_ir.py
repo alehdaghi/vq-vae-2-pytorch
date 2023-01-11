@@ -99,81 +99,86 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         aug_ir = aug_transforms(img2)
         bs = img1.size(0)
 
-        model.person_id.requires_grad_(True)
-        model.person_id.train()
-        feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, modal=0, with_feature=True)
-        featV, featI = torch.split(feat, bs)
-        # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
-        # zeros = actMap < (m - 0.1)
-        # ones = actMap > (m + 0.02)
-        # actMap[zeros] = 0
-        # actMap[ones] = 1
-        upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
-
-        loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-        loss_triplet = triplet_criterion(featV, label1)[0] + triplet_criterion(featI, label2)[0]
-        Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
-        # var = Feat.var(dim=1)
-        # mean = Feat.mean(dim=1)
-
-        ir_b, ir_t = model.encode_content(aug_ir)
+        ir_b, ir_t = model.encode_content(img1)
         ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
-        ir_reconst = model.decode(ir_content_itself).expand(-1,3,-1,-1)
-
-        w = torch.rand(bs, 3).cuda() + 0.01
-        w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
-        gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
-        invIndex = np.random.choice(bs, bs // 2, replace=False)
-        gray[invIndex] = 1 - gray[invIndex]
-
-        rgb_b, rgb_t = model.encode_content(gray)
-        rgb_b_f, rgb_t_f = rgb_b, rgb_t#model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
-        rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
-        inter = model.decode(rgb_content).expand(-1,3,-1,-1)
-
-        feat_fake, score_fake, _, _, _ = model.person_id(xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
-        loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
-        loss_triplet_fake, _ = triplet_criterion(feat_fake, labels)
-        modal_free_loss = criterion(feat_fake, feat)
-        loss_fake = loss_id_fake + modal_free_loss
-
-        optimizer_reid.zero_grad()
-        loss_Re = loss_id_real + loss_triplet + loss_fake #+ var.mean()
-        loss_Re.backward()
-        optimizer_reid.step()
-
-        model.person_id.requires_grad_(False)
-        model.person_id.eval()
-        featG, score, _, _, _ = model.person_id(xRGB=None, xIR=inter, modal=2, with_feature=True)
-        loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
-
-        FV = einops.rearrange(feat[:bs].detach(), '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1) # reshaped to b * p
-        sV = FV.sum(dim=1, keepdim=True) # sum of features for each person
-        centerV = (sV - FV) / (args.num_pos - 1) # make centers of others for each person
-
-        FG = einops.rearrange(featG, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1)  # reshaped to b * p
-        sG = FG.sum(dim=1, keepdim=True)  # sum of features for each person
-        centerG_X = (sG - FG) / (args.num_pos - 1)  # make centers of others for each person
-
-        # centerV = einops.rearrange(feat[:bs], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
-        centerT = einops.rearrange(feat[bs:], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
-        centerG = FG.mean(dim=1)
-
-        pos = (centerG - centerT.detach()).pow(2).sum(dim=1)
-        neg = (centerG_X - centerV.detach()).pow(2).sum(dim=-1).mean(dim=1)
-        loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.1) #criterion(featG, feat[bs:].detach())
-        loss_Re_Ir = loss_id_real_ir + loss_feat_ir
-
-
+        ir_reconst = model.decode(ir_content_itself).expand(-1, 3, -1, -1)
         recon_loss = criterion(ir_reconst, img2)
-        # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
-        #                   criterion(gray_content_other, rgb_content_itself)
-        latent_loss = (latent_loss + latent_loss_ir).mean()
-        loss_G = (recon_loss + latent_loss_weight * latent_loss)  # + loss_id_fake + feat_loss + loss_kl_fake
+        loss_G = (recon_loss + latent_loss_weight * latent_loss)
+        loss_feat_ir = loss_Re_Ir = loss_Re = torch.Tensor([-1])
+
+        if epoch > 20 :
+            model.person_id.requires_grad_(True)
+            model.person_id.train()
+            feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, modal=0, with_feature=True)
+            featV, featI = torch.split(feat, bs)
+            # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
+            # zeros = actMap < (m - 0.1)
+            # ones = actMap > (m + 0.02)
+            # actMap[zeros] = 0
+            # actMap[ones] = 1
+            upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
+
+            loss_id_real = torch.nn.functional.cross_entropy(score, labels)
+            loss_triplet = triplet_criterion(featV, label1)[0] + triplet_criterion(featI, label2)[0]
+            Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
+            # var = Feat.var(dim=1)
+            # mean = Feat.mean(dim=1)
+
+
+
+            w = torch.rand(bs, 3).cuda() + 0.01
+            w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
+            gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
+            invIndex = np.random.choice(bs, bs // 2, replace=False)
+            gray[invIndex] = 1 - gray[invIndex]
+
+            rgb_b, rgb_t = model.encode_content(gray)
+            rgb_b_f, rgb_t_f = rgb_b, rgb_t#model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
+            rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
+            inter = model.decode(rgb_content).expand(-1,3,-1,-1)
+
+            feat_fake, score_fake, _, _, _ = model.person_id(xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
+            loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
+            loss_triplet_fake, _ = triplet_criterion(feat_fake, labels)
+            modal_free_loss = criterion(feat_fake, feat)
+            loss_fake = loss_id_fake + modal_free_loss
+
+            optimizer_reid.zero_grad()
+            loss_Re = loss_id_real + loss_triplet + loss_fake #+ var.mean()
+            loss_Re.backward()
+            optimizer_reid.step()
+
+            model.person_id.requires_grad_(False)
+            model.person_id.eval()
+            featG, score, _, _, _ = model.person_id(xRGB=None, xIR=inter, modal=2, with_feature=True)
+            loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
+
+            FV = einops.rearrange(feat[:bs].detach(), '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1) # reshaped to b * p
+            sV = FV.sum(dim=1, keepdim=True) # sum of features for each person
+            centerV = (sV - FV) / (args.num_pos - 1) # make centers of others for each person
+
+            FG = einops.rearrange(featG, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1)  # reshaped to b * p
+            sG = FG.sum(dim=1, keepdim=True)  # sum of features for each person
+            centerG_X = (sG - FG) / (args.num_pos - 1)  # make centers of others for each person
+
+            # centerV = einops.rearrange(feat[:bs], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+            centerT = einops.rearrange(feat[bs:], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+            centerG = FG.mean(dim=1)
+
+            pos = (centerG - centerT.detach()).pow(2).sum(dim=1)
+            neg = (centerG_X - centerV.detach()).pow(2).sum(dim=-1).mean(dim=1)
+            loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.1) #criterion(featG, feat[bs:].detach())
+            loss_Re_Ir = loss_id_real_ir + loss_feat_ir
+
+            # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
+            #                   criterion(gray_content_other, rgb_content_itself)
+            latent_loss = latent_loss + latent_loss_ir
+            loss_G = loss_G + 0.1 * loss_Re_Ir
+              # + loss_id_fake + feat_loss + loss_kl_fake
 
 
         optimizer.zero_grad()
-        (10 * loss_G + loss_Re_Ir).backward()
+        loss_G.backward()
         if scheduler is not None:
             scheduler.step()
         optimizer.step()
