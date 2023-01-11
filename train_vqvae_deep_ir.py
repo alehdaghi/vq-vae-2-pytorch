@@ -319,13 +319,13 @@ def main(args):
                     "epoch": best_i,
                     "net": model.state_dict()
                 }
-                torch.save(obj, f"checkpoint-deep-transfer/vqvae_ir50_best.pt")
+                torch.save(obj, f"checkpoint-deep-transfer/vqvae_ir50Z_best.pt")
             print('best mAP: {:.2%}| epoch: {}'.format(best_mAP, best_i))
 
         model.person_id.train()
-        torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir50_last.pt")
+        torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir50Z_last.pt")
         if i % 10 == 0 and dist.is_primary():
-            torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir50_{str(i + 1).zfill(3)}.pt")
+            torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir50Z_{str(i + 1).zfill(3)}.pt")
 
 
 
