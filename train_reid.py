@@ -15,14 +15,14 @@ from tqdm import tqdm
 
 from data_loader import SYSUData
 from loss import TripletLoss, TripletLoss_WRT
-from model import ModelAdaptive, ModelAdaptive_Deep
+from model import ModelAdaptive, ModelAdaptive_Deep, embed_net
 from reid_tools import validate
 
 from vqvae_deep import VQVAE_Deep as VQVAE
 from scheduler import CycleScheduler
 import distributed as dist
 from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter(comment="WRT_loss")
+writer = SummaryWriter(comment="WRT_loss_part")
 
 invTrans = transforms.Compose([
     transforms.Normalize(mean=[0., 0., 0.], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]),
@@ -71,24 +71,45 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         labels = torch.cat((label1, label2), 0)
         bs = img1.size(0)
 
-        feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
+        if model.person_id.part :
+            feat_parts, out0, feat = model.person_id(xRGB=img1, xIR=img2, modal=0)
+            loss_id_real = torch.nn.functional.cross_entropy(out0[0], labels.long())
+            _, predicted = out0[0].max(1)
+            c = (predicted.eq(labels).sum().item())
 
-        _, predicted = score.max(1)
-        correct += (predicted.eq(labels).sum().item())
+            loss_tri_l, batch_acc = triplet_criterion(feat_parts[0], labels)
+            for j in range(len(feat_parts) - 1):
+                loss_id_real += torch.nn.functional.cross_entropy(out0[j + 1], labels.long())
+                loss_tri_l += triplet_criterion(feat_parts[j + 1], labels)[0]
 
-        loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-        loss_triplet, _ = triplet_criterion(feat, labels)
+                _, predicted = out0[j + 1].max(1)
+                c += (predicted.eq(labels).sum().item())
+
+            loss_triplet, batch_acc = triplet_criterion(feat, labels)
+            loss_triplet += loss_tri_l * 2
+
+
+            correct += (c/6)
+
+        else:
+            feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
+
+            _, predicted = score.max(1)
+            correct += (predicted.eq(labels).sum().item())
+
+            loss_id_real = torch.nn.functional.cross_entropy(score, labels)
+            loss_triplet, _ = triplet_criterion(feat, labels)
 
         F = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=2)
         var = F.var(dim=1)
         mean = F.mean(dim=1)
 
-        _, S_inter, _ = torch.pca_lowrank(mean, q=args.batch_size, center=True, niter=3)
-        _, S_intra, _ = torch.pca_lowrank(F, q=2 * args.num_pos, center=True, niter=3)
+        # _, S_inter, _ = torch.pca_lowrank(mean, q=args.batch_size, center=True, niter=3)
+        # _, S_intra, _ = torch.pca_lowrank(F, q=2 * args.num_pos, center=True, niter=3)
         # eigen_inter += S_inter.mean().item()
         # eigen_intra += S_intra.mean().item()
         # svd_loss = ranking_loss(S_inter.mean(), S_intra.mean(), torch.tensor(1))
-        svd_loss = ranking_loss(S_inter[-1, None], S_intra[:, 0], torch.tensor([1]).cuda())
+        svd_loss = torch.Tensor([-1]) #ranking_loss(S_inter[-1, None], S_intra[:, 0], torch.tensor([1]).cuda())
         svd_sum += svd_loss.item()
 
         optimizer_reid.zero_grad()
@@ -150,6 +171,7 @@ def main(args):
     loader_batch = args.batch_size * args.num_pos
     vq_vae = VQVAE().to(device)
     model = ModelAdaptive_Deep(dataset.num_class, vq_vae, arch='resnet50').to(device)
+    model.person_id = embed_net(dataset.num_class, 'off', 'off', arch='resnet50', part=True).to(device)
 
     if args.distributed:
         model = nn.parallel.DistributedDataParallel(

@@ -55,10 +55,25 @@ def weights_init_classifier(m):
         if m.bias:
             init.zeros_(m.bias.data)
 
+def ConvModule(c_in, c_out, k = 1, is_init_kaiming = False ):
+    conv = nn.Conv2d(c_in, c_out, k)
+    if is_init_kaiming:
+        conv.apply(weights_init_kaiming)
+    return nn.Sequential(conv,
+        nn.BatchNorm2d(c_out),
+        nn.ReLU(inplace=True)
+    )
+
+def LinearModule(d_in, d_out):
+    fc = nn.Linear(d_in, d_out)
+    init.normal_(fc.weight, std=0.001)
+    init.constant_(fc.bias, 0)
+    return fc
 
 
 class embed_net(nn.Module):
-    def __init__(self, class_num, no_local='on', gm_pool='on', arch='resnet50', camera_num=6):
+    def __init__(self, class_num, no_local='on', gm_pool='on', arch='resnet50', camera_num=6, part = False):
+        self.part = part
         super(embed_net, self).__init__()
 
         if arch == 'resnet50':
@@ -86,6 +101,18 @@ class embed_net(nn.Module):
             self.pool_dim = 2048
         else:
             self.pool_dim = 512
+
+        if part:
+            self.local_conv_list = nn.ModuleList()
+            for _ in range(6):
+                self.local_conv_list.append(ConvModule(self.pool_dim, 512, is_init_kaiming=True))
+
+            self.fc_list = nn.ModuleList()
+            for _ in range(6):
+                self.fc_list.append(LinearModule(512, class_num))
+            self.pool_dim = 6 * 512
+
+
 
         self.thermal_module = nn.Sequential(
             resnet.conv1, resnet.bn1, resnet.maxpool,  # no relu
@@ -134,16 +161,34 @@ class embed_net(nn.Module):
 
         person_mask = compute_mask(x4)
 
-        feat_pool = self.gl_pool(x4, self.gm_pool)
-        feat = self.bottleneck(feat_pool)
-        # feat = self.drop(feat)
+        if self.part:
+            local_feat_list = []
+            logits_list = []
+            p = 10  # regDB: 10.0    SYSU: 3.0
+            local_6_feat_tensor = (F.adaptive_avg_pool2d(x4 ** p + 1e-12, (6, 1)) ** (1 / p)).unsqueeze(dim=-1)
+            for i in range(6):
+                local_feat = self.local_conv_list[i](local_6_feat_tensor[:, :, i])
+                # shape [N, c]
+                local_feat_list.append(local_feat.squeeze())
+                logits_list.append(self.fc_list[i](local_feat.squeeze()))
 
-        if with_feature:
-            return feat_pool, self.classifier(feat), x4 ,person_mask, x3
+            feat_all = torch.cat(local_feat_list, dim=1)
+            if self.training:
+                return local_feat_list, logits_list, feat_all
+            else:
+                return self.l2norm(feat_all), self.l2norm(feat_all)
 
-        if not self.training:
-            return self.l2norm(feat), self.l2norm(feat_pool)
-        return feat_pool, self.classifier(feat), #x, person_mask
+        else :
+            feat_pool = self.gl_pool(x4, self.gm_pool)
+            feat = self.bottleneck(feat_pool)
+            # feat = self.drop(feat)
+
+            if with_feature:
+                return feat_pool, self.classifier(feat), x4 ,person_mask, x3
+
+            if not self.training:
+                return self.l2norm(feat), self.l2norm(feat_pool)
+            return feat_pool, self.classifier(feat), #x, person_mask
 
     @staticmethod
     def gl_pool(x, gm_pool):
