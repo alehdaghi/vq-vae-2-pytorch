@@ -22,7 +22,7 @@ from vqvae_deep import VQVAE_Deep as VQVAE
 from scheduler import CycleScheduler
 import distributed as dist
 from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter()
+writer = SummaryWriter(comment="WRT_loss")
 
 invTrans = transforms.Compose([
     transforms.Normalize(mean=[0., 0., 0.], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]),
@@ -198,9 +198,9 @@ def main(args):
         )
 
 
-        train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
+        # train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i % 4 == 0:
-            mAp = validate(0, model.person_id, args=args, mode='all')
+            mAp = validate(0, model, args=args, mode='all')
             writer.add_scalar("mAP/eval", mAp, i)
             if mAp > best_mAp:
                 torch.save(model.person_id.state_dict(), f"checkpoint/reid_best.pt")
