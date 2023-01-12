@@ -206,8 +206,8 @@ def main(args):
     base_params_reid = filter(lambda p: id(p) not in ignored_params_reid, model.person_id.parameters())
 
     optimizer_reID = optim.SGD([
-        {'params': base_params_reid, 'lr': 0.1 * args.lr},
-        {'params': model.person_id.local_conv_list.parameters(), 'lr': args.lr},
+        {'params': base_params_reid, 'lr': 0.1 * 0.01},
+        {'params': model.person_id.local_conv_list.parameters(), 'lr': 0.01},
         {'params': model.person_id.fc_list.parameters(), 'lr': args.lr}
     ],
         weight_decay=5e-4, momentum=0.9, nesterov=True)
