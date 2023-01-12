@@ -22,7 +22,7 @@ from vqvae_deep import VQVAE_Deep as VQVAE
 from scheduler import CycleScheduler
 import distributed as dist
 from torch.utils.tensorboard import SummaryWriter
-writer = SummaryWriter(comment="WRT_loss_part")
+writer = SummaryWriter(comment="WRT_loss_part_sgd")
 
 invTrans = transforms.Compose([
     transforms.Normalize(mean=[0., 0., 0.], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]),
@@ -198,9 +198,19 @@ def main(args):
     ids = set(map(id, model.parameters()))
     params = filter(lambda p: id(p) in ids, model.parameters())
     base_params = filter(lambda p: id(p) not in ignored_params, params)
+    optimizer = optim.Adam(base_params, lr=args.lr)
 
-    optimizer_reID = optim.Adam(model.person_id.parameters(), lr=args.lr)
-    optimizer = optim.Adam(base_params , lr=args.lr)
+    ignored_params_reid = list(map(id, model.person_id.local_conv_list.parameters())) \
+                     + list(map(id, model.person_id.fc_list.parameters()))
+
+    base_params_reid = filter(lambda p: id(p) not in ignored_params_reid, model.person_id.parameters())
+
+    optimizer_reID = optim.SGD([
+        {'params': base_params_reid, 'lr': 0.1 * args.lr},
+        {'params': model.person_id.local_conv_list.parameters(), 'lr': args.lr},
+        {'params': model.person_id.fc_list.parameters(), 'lr': args.lr}
+    ],
+        weight_decay=5e-4, momentum=0.9, nesterov=True)
 
     scheduler = None
     if args.sched == "cycle":
