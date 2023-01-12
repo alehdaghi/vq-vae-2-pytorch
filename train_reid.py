@@ -14,7 +14,7 @@ from torchvision import datasets, transforms, utils
 from tqdm import tqdm
 
 from data_loader import SYSUData
-from loss import TripletLoss
+from loss import TripletLoss, TripletLoss_WRT
 from model import ModelAdaptive, ModelAdaptive_Deep
 from reid_tools import validate
 
@@ -42,7 +42,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         loader = tqdm(loader)
 
     criterion = nn.MSELoss()
-    triplet_criterion = TripletLoss()
+    triplet_criterion = TripletLoss_WRT()
     ranking_loss = nn.MarginRankingLoss(margin=1)
 
     mse_sum = 0
@@ -92,7 +92,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         svd_sum += svd_loss.item()
 
         optimizer_reid.zero_grad()
-        loss_Re = loss_id_real + loss_triplet + S_intra.mean() + svd_loss #+ var.mean()
+        loss_Re = loss_id_real + loss_triplet #+ S_intra.mean() + svd_loss #+ var.mean()
         loss_Re.backward()
         optimizer_reid.step()
 
