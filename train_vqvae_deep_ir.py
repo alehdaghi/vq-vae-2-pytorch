@@ -138,7 +138,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
             inter = model.decode(rgb_content).expand(-1,3,-1,-1)
 
-            feat_fake, score_fake, _, _, _ = model.person_id(xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
+            feat_fake, score_fake, _, _, _ = model.person_id(xRGB = None, xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
             loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
             loss_triplet_fake, _ = triplet_criterion(feat_fake, labels)
             modal_free_loss = criterion(feat_fake, feat)
