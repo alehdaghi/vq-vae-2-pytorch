@@ -31,6 +31,7 @@ invTrans = transforms.Compose([
     transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
 ])
 
+stage_reconstruction = 40
 
 class RandomCropBoxes:
     def __init__(self, n, size):
@@ -106,7 +107,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         loss_G = (recon_loss + latent_loss_weight * latent_loss)
         loss_feat_ir = loss_Re_Ir = loss_Re = torch.Tensor([-1])
 
-        if epoch > 20 :
+        if epoch > stage_reconstruction :
             model.person_id.requires_grad_(True)
             model.person_id.train()
             feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, modal=0, with_feature=True)
@@ -220,8 +221,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 rgb = aug_rgb[index]
                 ir = aug_ir[index]
                 ir_rec = ir_reconst[index]
-                rgb2ir = inter[index] if epoch >= 20 else img2[index]
-                g = gray[index] if epoch >= 20 else rgb
+                rgb2ir = inter[index] if epoch >= stage_reconstruction else img2[index]
+                g = gray[index] if epoch >= stage_reconstruction else rgb
 
                 # with torch.no_grad():
                 #     out, _ = model(sample)
@@ -313,7 +314,7 @@ def main(args):
 
 
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
-        if i >= 20 and i % 4 == 0:
+        if i >= stage_reconstruction and i % 4 == 0:
             mAP = validate(0, model, args=args, mode='all')
             if mAP > best_mAP:
                 best_mAP = mAP
