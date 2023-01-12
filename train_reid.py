@@ -198,7 +198,7 @@ def main(args):
         )
 
 
-        # train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
+        train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i % 4 == 0:
             mAp = validate(0, model, args=args, mode='all')
             writer.add_scalar("mAP/eval", mAp, i)
