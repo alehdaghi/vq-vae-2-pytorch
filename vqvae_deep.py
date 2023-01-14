@@ -188,7 +188,7 @@ class VQVAE_Deep(nn.Module):
             self,
             in_channel=3,
             channel=256,
-            n_res_block=4,
+            n_res_block=6,
             n_res_channel=128,
             embed_dim=256,
             n_embed=512,
