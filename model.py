@@ -90,11 +90,11 @@ class embed_net(nn.Module):
         resnet.layer4[0].downsample[0].stride = (1, 1)
 
         self.base_resnet = nn.Sequential(resnet.layer2,
-                                          nn.Dropout2d(0.05),
+                                          # nn.Dropout2d(0.05),
                                           resnet.layer3,
-                                          nn.Dropout2d(0.05),
+                                          # nn.Dropout2d(0.05),
                                           resnet.layer4,
-                                          nn.Dropout2d(0.1)
+                                          # nn.Dropout2d(0.1)
                                           )
 
         if arch == 'resnet50':
@@ -167,12 +167,12 @@ class embed_net(nn.Module):
             p = 10  # regDB: 10.0    SYSU: 3.0
             local_6_feat_tensor = (F.adaptive_avg_pool2d(x4 ** p + 1e-12, (6, 1)) ** (1 / p)).unsqueeze(dim=-1)
             for i in range(6):
-                local_feat = self.local_conv_list[i](local_6_feat_tensor[:, :, i])
+                local_feat = self.local_conv_list[i](local_6_feat_tensor[:, :, i]).squeeze(2).squeeze(2)
                 # shape [N, c]
-                local_feat_list.append(local_feat.squeeze())
-                logits_list.append(self.fc_list[i](local_feat.squeeze()))
+                local_feat_list.append(local_feat)
+                logits_list.append(self.fc_list[i](local_feat))
 
-            feat_all = torch.cat(local_feat_list, dim=1)
+            feat_all = torch.cat(local_feat_list, dim=-1)
             if self.training:
                 return local_feat_list, logits_list, feat_all
             else:
@@ -487,3 +487,5 @@ class ModelAdaptive_Deep(nn.Module):
 
     def decode(self, content):
         return self.adaptor.decode(content)
+
+
