@@ -329,7 +329,7 @@ def main(args):
         )
 
 
-        # train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
+        train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i >= stage_reconstruction and i % 4 == 0:
             mAP = validate(0, model, args=args, mode='all')
             if mAP > best_mAP:
