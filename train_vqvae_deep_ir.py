@@ -118,7 +118,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             # ones = actMap > (m + 0.02)
             # actMap[zeros] = 0
             # actMap[ones] = 1
-            upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
+            # upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
             loss_id_real = torch.nn.functional.cross_entropy(score, labels)
             loss_triplet = triplet_criterion(featV, label1)[0] + triplet_criterion(featI, label2)[0]
