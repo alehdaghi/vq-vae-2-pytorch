@@ -145,7 +145,7 @@ class embed_net2(nn.Module):
 
     def forward(self, xRGB, xIR, xZ=None, modal=0, with_feature = False):
         if modal == 0:
-            x1 = self.visible_module(xRGB) if xRGB is not None else self.z_module(xZ)
+            x1 = self.visible_module(xRGB) if xRGB is not None else self.gray_module(xZ)
             x2 = self.thermal_module(xIR)
             x = torch.cat((x1, x2), 0)
             # if xZ is not None :
