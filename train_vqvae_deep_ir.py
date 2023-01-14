@@ -16,7 +16,7 @@ import torchvision.transforms as T
 from tqdm import tqdm
 
 from data_loader import SYSUData
-from loss import TripletLoss
+from loss import TripletLoss, TripletLoss_WRT
 from model import ModelAdaptive, ModelAdaptive_Deep, embed_net
 from old_model import embed_net2
 from reid_tools import validate
@@ -75,7 +75,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         loader = tqdm(loader)
 
     criterion = nn.MSELoss()
-    triplet_criterion = TripletLoss()
+    triplet_criterion = TripletLoss_WRT()
 
     latent_loss_weight = 0.25
     sample_size = 16
