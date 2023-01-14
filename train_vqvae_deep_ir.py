@@ -18,6 +18,7 @@ from tqdm import tqdm
 from data_loader import SYSUData
 from loss import TripletLoss
 from model import ModelAdaptive, ModelAdaptive_Deep, embed_net
+from old_model import embed_net2
 from reid_tools import validate
 
 from vqvae_deep import VQVAE_Deep as VQVAE
@@ -100,7 +101,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         aug_ir = aug_transforms(img2)
         bs = img1.size(0)
 
-        ir_b, ir_t = model.encode_content(img1 if epoch < 30 else aug_ir )
+        ir_b, ir_t = model.encode_content(img2)
         ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
         ir_reconst = model.decode(ir_content_itself).expand(-1, 3, -1, -1)
         recon_loss = criterion(ir_reconst, img2)
@@ -261,7 +262,11 @@ def main(args):
     loader_batch = args.batch_size * args.num_pos
     vq_vae = VQVAE(out_channel=1).to(device)
     model = ModelAdaptive_Deep(dataset.num_class, vq_vae, arch='resnet50').to(device)
-
+    model.person_id = embed_net2(dataset.num_class).to(device)
+    # checkpoint = torch.load(
+    #     '/home/mahdi/PycharmProjects/vq-vae-2-pytorch/sysu_att_p8_n4_lr_0.03_seed_0_gray_randChanU2_best.t')
+    # model.person_id.load_state_dict(checkpoint['net'])
+    model.person_id.to(device)
 
     if args.distributed:
         model = nn.parallel.DistributedDataParallel(
@@ -292,8 +297,19 @@ def main(args):
     params = filter(lambda p: id(p) in ids, model.parameters())
     base_params = filter(lambda p: id(p) not in ignored_params, params)
 
-    optimizer_reID = optim.Adam(model.person_id.parameters(), lr=args.lr)
+
     optimizer = optim.Adam(base_params , lr=args.lr)
+
+    ignored_params_reid = list(map(id, model.person_id.bottleneck.parameters())) \
+                          + list(map(id, model.person_id.classifier.parameters()))
+
+    base_params_reid = filter(lambda p: id(p) not in ignored_params_reid, model.person_id.parameters())
+
+    optimizer_reID = optim.SGD([
+        {'params': base_params_reid, 'lr': 0.1 * 0.001},
+        {'params': model.person_id.bottleneck.parameters(), 'lr': 0.001},
+        {'params': model.person_id.classifier.parameters(), 'lr': 0.001}
+    ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
     scheduler = None
     if args.sched == "cycle":
@@ -313,7 +329,7 @@ def main(args):
         )
 
 
-        train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
+        # train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i >= stage_reconstruction and i % 4 == 0:
             mAP = validate(0, model, args=args, mode='all')
             if mAP > best_mAP:
