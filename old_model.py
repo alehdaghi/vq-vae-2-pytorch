@@ -143,20 +143,20 @@ class embed_net2(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.gm_pool = gm_pool
 
-    def forward(self, x1, x2, x3=None, modal=0, with_feature = False):
+    def forward(self, xRGB, xIR, xZ=None, modal=0, with_feature = False):
         if modal == 0:
-            x1 = self.visible_module(x1)
-            x2 = self.thermal_module(x2)
+            x1 = self.visible_module(xRGB)
+            x2 = self.thermal_module(xIR)
             x = torch.cat((x1, x2), 0)
-            if x3 is not None :
-                x3 = self.gray_module(x3)
+            if xZ is not None :
+                x3 = self.gray_module(xZ)
                 x = torch.cat((x, x3), 0)
         elif modal == 1:
-            x = self.visible_module(x1)
+            x = self.visible_module(xRGB)
         elif modal == 2:
-            x = self.thermal_module(x2)
+            x = self.thermal_module(xIR)
         elif modal == 3:
-            x = self.gray_module(x3)
+            x = self.gray_module(xZ)
 
         # shared block
         if self.non_local == 'on':
