@@ -148,9 +148,9 @@ class embed_net2(nn.Module):
             x1 = self.visible_module(xRGB) if xRGB is not None else self.gray_module(xZ)
             x2 = self.thermal_module(xIR)
             x = torch.cat((x1, x2), 0)
-            # if xZ is not None :
-            #     x3 = self.gray_module(xZ)
-            #     x = torch.cat((x, x3), 0)
+            if xZ is not None and xRGB is not None:
+                x3 = self.gray_module(xZ)
+                x = torch.cat((x, x3), 0)
         elif modal == 1:
             x = self.visible_module(xRGB)
         elif modal == 2:

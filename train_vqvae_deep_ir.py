@@ -32,7 +32,7 @@ invTrans = transforms.Compose([
     transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
 ])
 
-stage_reconstruction = 40
+stage_reconstruction = -1
 
 class RandomCropBoxes:
     def __init__(self, n, size):
@@ -95,7 +95,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         img2 = img2.to(device)
         label1 = label1.to(device)
         label2 = label2.to(device)
-        labels = torch.cat((label1, label2), 0)
+        labels = torch.cat((label1, label2, label1), 0)
 
         aug_rgb = aug_transforms(img1)
         aug_ir = aug_transforms(img2)
@@ -109,25 +109,6 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         loss_feat_ir = loss_Re_Ir = loss_Re = torch.Tensor([-1])
 
         if epoch > stage_reconstruction :
-            model.person_id.requires_grad_(True)
-            model.person_id.train()
-            feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, modal=0, with_feature=True)
-            featV, featI = torch.split(feat, bs)
-            # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
-            # zeros = actMap < (m - 0.1)
-            # ones = actMap > (m + 0.02)
-            # actMap[zeros] = 0
-            # actMap[ones] = 1
-            # upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
-
-            loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-            loss_triplet = triplet_criterion(featV, label1)[0] + triplet_criterion(featI, label2)[0]
-            Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
-            # var = Feat.var(dim=1)
-            # mean = Feat.mean(dim=1)
-
-
-
             w = torch.rand(bs, 3).cuda() + 0.01
             w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
             gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
@@ -139,11 +120,32 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
             inter = model.decode(rgb_content).expand(-1,3,-1,-1)
 
-            feat_fake, score_fake, _, _, _ = model.person_id(xRGB = None, xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
-            loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
-            loss_triplet_fake, _ = triplet_criterion(feat_fake, labels)
-            modal_free_loss = criterion(feat_fake, feat)
-            loss_fake = loss_id_fake + modal_free_loss
+            model.person_id.requires_grad_(True)
+            model.person_id.train()
+            feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, xZ=inter.detach(),  modal=0, with_feature=True)
+            featV, featI, featZ = torch.split(feat, bs)
+            # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
+            # zeros = actMap < (m - 0.1)
+            # ones = actMap > (m + 0.02)
+            # actMap[zeros] = 0
+            # actMap[ones] = 1
+            # upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
+
+            loss_id_real = torch.nn.functional.cross_entropy(score, labels)
+            loss_triplet = triplet_criterion(feat, labels)[0]
+            Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
+            # var = Feat.var(dim=1)
+            # mean = Feat.mean(dim=1)
+            modal_free_loss = criterion(featZ, featV)
+
+
+
+
+            # feat_fake, score_fake, _, _, _ = model.person_id(xRGB = None, xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
+            # loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
+            # loss_triplet_fake, _ = triplet_criterion(feat_fake, labels)
+            # modal_free_loss = criterion(feat_fake, feat)
+            loss_fake = modal_free_loss
 
             optimizer_reid.zero_grad()
             loss_Re = loss_id_real + loss_triplet + loss_fake #+ var.mean()
