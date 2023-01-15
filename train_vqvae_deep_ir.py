@@ -123,7 +123,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             model.person_id.requires_grad_(True)
             model.person_id.train()
             feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, xZ=inter.detach(),  modal=0, with_feature=True)
-            featV, featI, featZ = torch.split(feat, bs)
+            featV, featT, featZ = torch.split(feat, bs)
             # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
             # zeros = actMap < (m - 0.1)
             # ones = actMap > (m + 0.02)
@@ -157,7 +157,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             featG, score, _, _, _ = model.person_id(xRGB=None, xIR=inter, modal=2, with_feature=True)
             loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
 
-            FV = einops.rearrange(feat[:bs].detach(), '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1) # reshaped to b * p
+            FV = einops.rearrange(featV.detach(), '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1) # reshaped to b * p
             sV = FV.sum(dim=1, keepdim=True) # sum of features for each person
             centerV = (sV - FV) / (args.num_pos - 1) # make centers of others for each person
 
@@ -166,7 +166,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             centerG_X = (sG - FG) / (args.num_pos - 1)  # make centers of others for each person
 
             # centerV = einops.rearrange(feat[:bs], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
-            centerT = einops.rearrange(feat[bs:], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+            centerT = einops.rearrange(featT, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
             centerG = FG.mean(dim=1)
 
             pos = (centerG - centerT.detach()).pow(2).sum(dim=1)
