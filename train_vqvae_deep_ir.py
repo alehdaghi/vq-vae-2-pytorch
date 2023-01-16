@@ -169,9 +169,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             centerT = einops.rearrange(featT, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
             centerG = FG.mean(dim=1)
 
-            pos = (centerG - centerT.detach()).pow(2).sum(dim=1)
-            neg = (centerG_X - centerV.detach()).pow(2).sum(dim=-1).mean(dim=1)
-            loss_feat_ir = pos.mean() #F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.1) #criterion(featG, feat[bs:].detach())
+            pos = (centerG - centerT.detach()).pow(2).mean(dim=1)
+            neg = (centerG_X - centerV.detach()).pow(2).mean(dim=-1).mean(dim=1)
+            loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.1) #criterion(featG, feat[bs:].detach())
             loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
             # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
