@@ -163,8 +163,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
             model.person_id.requires_grad_(False)
             model.person_id.eval()
-            model.discriminator.requires_grad_(False)
-            model.discriminator.eval()
+            # model.discriminator.requires_grad_(False)
+            # model.discriminator.eval()
 
             featG, score, _, _, _ = model.person_id(xRGB=None, xIR=inter, modal=2, with_feature=True)
             loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
