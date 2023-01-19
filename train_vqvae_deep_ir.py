@@ -147,7 +147,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             modal_free_loss = criterion(featZ, featV)
 
 
-            predict_true_modals = model.discriminator(torch.cat((gray, aug_ir, inter.detach()), 0))
+            predict_true_modals = model.discriminator(torch.cat((gray, inter.detach(), aug_ir), 0))
             disc_loss_true = F.binary_cross_entropy(predict_true_modals.squeeze(), modal_labels_true.float())
 
             # feat_fake, score_fake, _, _, _ = model.person_id(xRGB = None, xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
