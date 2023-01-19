@@ -87,6 +87,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     feat_sum = 0
 
     ir_sum = 0
+    disc_real_sum , disc_fake_sum = 0 , 0
 
     for i, (img1, img2, label1, label2, camera1, camera2) in enumerate(loader):
         # vq_vae, person_id =  model['vq_vae'], model['person_id']
@@ -182,7 +183,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
             pos = (centerG - centerT.detach()).pow(2).mean(dim=1)
             neg = (centerG_X - centerV.detach()).pow(2).mean(dim=-1).mean(dim=1)
-            loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.1) #criterion(featG, feat[bs:].detach())
+            loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.01) #criterion(featG, feat[bs:].detach())
             loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
             predict_fake_modals = model.discriminator(inter)
@@ -218,6 +219,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         feat_sum += feat_err
         ir_sum += loss_Re_Ir.item()
 
+        disc_real_sum += disc_loss_true.item()
+        disc_fake_sum += disc_loss_fake.item()
+
         if dist.is_primary():
             lr = optimizer.param_groups[0]["lr"]
 
@@ -228,6 +232,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                     f"id: {id_err:.3f}({id_sum / (i+1):.3f}); "
                     f"ft: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
                     f"ir: {loss_Re_Ir.item():.3f}({ir_sum / (i + 1):.5f}); "
+                    f"d: r:({disc_loss_true / (i + 1):.3f})f:({disc_loss_fake / (i + 1):.3f}); "
                 )
             )
 
