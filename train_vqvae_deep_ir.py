@@ -227,12 +227,12 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
             loader.set_description(
                 (
-                    f"e: {epoch + 1}; mse: {recon_loss.item():.5f}({mse_sum / mse_n:.5f}); "
+                    f"e: {epoch + 1}; mse: {recon_loss.item():.3f}({mse_sum / mse_n:.3f}); "
                     f"lat: {latent_loss.item():.3f}; "
                     f"id: {id_err:.3f}({id_sum / (i+1):.3f}); "
-                    f"ft: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
-                    f"ir: {loss_Re_Ir.item():.3f}({ir_sum / (i + 1):.5f}); "
-                    f"d: r:({disc_loss_true / (i + 1):.3f})f:({disc_loss_fake / (i + 1):.3f}); "
+                    f"ft: {feat_err:.3f}({feat_sum / (i+1):.3f}); "
+                    f"ir: {loss_Re_Ir.item():.3f}({ir_sum / (i + 1):.3f}); "
+                    f"d: r:({disc_real_sum / (i + 1):.3f})f:({disc_fake_sum / (i + 1):.3f}); "
                 )
             )
 
