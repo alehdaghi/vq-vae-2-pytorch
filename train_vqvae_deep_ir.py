@@ -108,6 +108,10 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         loss_G = (recon_loss + latent_loss_weight * latent_loss)
         loss_feat_ir = loss_Re_Ir = loss_Re = torch.Tensor([-1])
 
+        modal_labels_true = torch.cat((torch.zeros_like(label1), torch.zeros_like(label1), torch.ones_like(label2)), 0).cuda() # color : 0, inter:0, ir : 1
+        modal_labels_fake = torch.ones_like(label1).cuda() # inter: 1
+
+
         if epoch > stage_reconstruction :
             w = torch.rand(bs, 3).cuda() + 0.01
             w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
@@ -122,6 +126,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
             model.person_id.requires_grad_(True)
             model.person_id.train()
+            model.discriminator.requires_grad_(True)
+            model.discriminator.train()
+
             feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, xZ=inter.detach(),  modal=0, with_feature=True)
             featV, featT, featZ = torch.split(feat, bs)
             # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
@@ -139,7 +146,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             modal_free_loss = criterion(featZ, featV)
 
 
-
+            predict_true_modals = model.discriminator(torch.cat((gray, aug_ir, inter.detach()), 0))
+            disc_loss_true = F.binary_cross_entropy(predict_true_modals.squeeze(), modal_labels_true.float())
 
             # feat_fake, score_fake, _, _, _ = model.person_id(xRGB = None, xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
             # loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
@@ -148,12 +156,15 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             loss_fake = modal_free_loss
 
             optimizer_reid.zero_grad()
-            loss_Re = loss_id_real + loss_triplet + loss_fake #+ var.mean()
+            loss_Re = loss_id_real + loss_triplet + loss_fake + disc_loss_true
             loss_Re.backward()
             optimizer_reid.step()
 
             model.person_id.requires_grad_(False)
             model.person_id.eval()
+            model.discriminator.requires_grad_(False)
+            model.discriminator.eval()
+
             featG, score, _, _, _ = model.person_id(xRGB=None, xIR=inter, modal=2, with_feature=True)
             loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
 
@@ -174,10 +185,13 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.1) #criterion(featG, feat[bs:].detach())
             loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
+            predict_fake_modals = model.discriminator(inter)
+            disc_loss_fake = F.binary_cross_entropy(predict_fake_modals.squeeze(), modal_labels_fake.float())
+
             # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
             #                   criterion(gray_content_other, rgb_content_itself)
 
-            loss_G = loss_G + 0.1 * loss_Re_Ir + latent_loss_weight * latent_loss_ir
+            loss_G = loss_G + 0.1 * (loss_Re_Ir + disc_loss_fake) + latent_loss_weight * latent_loss_ir
               # + loss_id_fake + feat_loss + loss_kl_fake
 
 
@@ -289,7 +303,7 @@ def main(args):
             else:
                 best_mAP = checkpoint['mAP']
                 best_i = checkpoint['epoch']
-                model.load_state_dict(checkpoint["net"], strict=True)
+                model.load_state_dict(checkpoint["net"], strict=False)
             print(f'==> loaded checkpoint {args.resume} (epoch {best_i} mAP {best_mAP})')
         else:
             print('==> no checkpoint found at {}'.format(args.resume))
@@ -310,7 +324,8 @@ def main(args):
     optimizer_reID = optim.SGD([
         {'params': base_params_reid, 'lr': 0.1 * 0.001},
         {'params': model.person_id.bottleneck.parameters(), 'lr': 0.001},
-        {'params': model.person_id.classifier.parameters(), 'lr': 0.001}
+        {'params': model.person_id.classifier.parameters(), 'lr': 0.001},
+        {'params': model.discriminator.parameters(), 'lr': 0.005}
     ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
     scheduler = None
