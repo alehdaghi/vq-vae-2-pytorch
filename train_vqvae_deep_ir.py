@@ -147,7 +147,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             modal_free_loss = criterion(featZ, featV)
 
 
-            predict_true_modals = model.discriminator(torch.cat((gray, inter.detach(), aug_ir), 0))
+            predict_true_modals = (torch.cat((model.discriminator(gray), model.discriminator(inter.detach()), model.discriminator(aug_ir)), 0))
             disc_loss_true = F.binary_cross_entropy(predict_true_modals.squeeze(), modal_labels_true.float())
 
             # feat_fake, score_fake, _, _, _ = model.person_id(xRGB = None, xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
@@ -350,7 +350,8 @@ def main(args):
             dataset, batch_size=loader_batch // args.n_gpu, sampler=sampler, num_workers=args.workers
         )
 
-
+        if i == args.start:
+            validate(0, model, args=args, mode='all')
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i >= stage_reconstruction and i % 4 == 0:
             mAP = validate(0, model, args=args, mode='all')
