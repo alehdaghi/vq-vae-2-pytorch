@@ -445,7 +445,7 @@ class ModelAdaptive_Deep(nn.Module):
         # )
 
         # self.mlp = MLP(self.person_id.pool_dim, get_num_adain_params(self.adaptor), 256, 1, norm='none', activ='relu')
-        # self.discriminator = Discriminator()
+        self.discriminator = Discriminator()
 
     def encode_person(self, rgb):
         feat, score, feat2d, actMap, x3 = self.person_id(xRGB=rgb, xIR=None, modal=1, with_feature=True)
@@ -489,3 +489,18 @@ class ModelAdaptive_Deep(nn.Module):
         return self.adaptor.decode(content)
 
 
+class Discriminator(nn.Module):
+    def __init__(self):
+        super(Discriminator, self).__init__()
+        # self.encoder = base_resnet(arch=arch).resnet_part2[2]  # layer4
+        m_net = torchvision.models.mobilenet_v3_small(pretrained=True)
+        self.encoder = m_net.features
+
+        self.discriminator = nn.Linear(576, 1)
+        self.activation = nn.Sigmoid()
+
+    def forward(self, x):
+        feat = self.encoder(x)
+        feat = embed_net.gl_pool(feat, 'off')
+        d = self.discriminator(feat)
+        return self.activation(d)
