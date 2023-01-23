@@ -295,7 +295,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 # model.train()
 
                 utils.save_image(
-                    invTrans(torch.cat([rgb, g, rgb2ir, ir, ir_rec, mask], 0)),
+                    invTrans(torch.cat([rgb, g, rgb2ir, ir, ir_rec, mask.expand(-1, 3, -1, -1)], 0)),
                     f"sample-new/ir50_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(rgb),
                     # normalize=True,
