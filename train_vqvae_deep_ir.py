@@ -72,6 +72,23 @@ def random_pair(args):
     ids = ids.reshape(-1)
     return ids
 
+def adjust_learning_rate(optimizer, epoch):
+    """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
+    if epoch < 10:
+        lr = args.lr * (epoch + 1) / 10
+    elif epoch >= 10 and epoch < 20:
+        lr = args.lr
+    elif epoch >= 20 and epoch < 50:
+        lr = args.lr * 0.1
+    elif epoch >= 50:
+        lr = args.lr * 0.01
+
+    optimizer.param_groups[0]['lr'] = 0.1 * lr
+    for i in range(len(optimizer.param_groups) - 1):
+        optimizer.param_groups[i + 1]['lr'] = lr
+
+    return lr
+
 def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     bs = rgb.shape[0]
     w = torch.rand(bs, 3).cuda() + 0.01
@@ -100,7 +117,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     if dist.is_primary():
         loader = tqdm(loader)
 
-
+    adjust_learning_rate(optimizer_reid, epoch)
 
     latent_loss_weight = 0.25
     sample_size = 16
