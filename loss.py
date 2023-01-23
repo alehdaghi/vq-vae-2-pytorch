@@ -120,8 +120,8 @@ class TripletLoss_WRT(nn.Module):
 
         weights_ap = softmax_weights(dist_ap, is_pos)
         weights_an = softmax_weights(-dist_an, is_neg)
-        furthest_positive = torch.sum(dist_ap * weights_ap, dim=1)
-        closest_negative = torch.sum(dist_an * weights_an, dim=1)
+        furthest_positive = torch.mean(dist_ap * weights_ap, dim=1)
+        closest_negative = torch.mean(dist_an * weights_an, dim=1)
 
         y = furthest_positive.new().resize_as_(furthest_positive).fill_(1)
         loss = self.ranking_loss(closest_negative - furthest_positive, y)
