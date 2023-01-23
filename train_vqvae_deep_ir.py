@@ -75,13 +75,13 @@ def random_pair(args):
 def adjust_learning_rate(optimizer, epoch):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     if epoch < 10:
-        lr = args.lr * (epoch + 1) / 10
+        lr = args.lr_F * (epoch + 1) / 10
     elif epoch >= 10 and epoch < 20:
-        lr = args.lr
+        lr = args.lr_F
     elif epoch >= 20 and epoch < 50:
-        lr = args.lr * 0.1
+        lr = args.lr_F * 0.1
     elif epoch >= 50:
-        lr = args.lr * 0.01
+        lr = args.lr_F * 0.01
 
     optimizer.param_groups[0]['lr'] = 0.1 * lr
     for i in range(len(optimizer.param_groups) - 1):
@@ -107,7 +107,6 @@ def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     # var = Feat.var(dim=1)
     # mean = Feat.mean(dim=1)
     modal_free_loss = criterion(featZ, featV)
-    print(modal_free_loss, loss_id_real, loss_triplet)
     optimizer_reid.zero_grad()
     loss_Re = loss_id_real + loss_triplet + modal_free_loss
     loss_Re.backward()
@@ -363,7 +362,7 @@ def main(args):
     base_params = filter(lambda p: id(p) not in ignored_params, params)
 
 
-    optimizer = optim.Adam(base_params , lr=args.lr)
+    optimizer = optim.Adam(base_params , lr=args.lr_G)
 
     ignored_params_reid = list(map(id, model.person_id.bottleneck.parameters())) \
                           + list(map(id, model.person_id.classifier.parameters()))
@@ -371,17 +370,17 @@ def main(args):
     base_params_reid = filter(lambda p: id(p) not in ignored_params_reid, model.person_id.parameters())
 
     optimizer_reID = optim.SGD([
-        {'params': base_params_reid, 'lr': 0.1 * 0.01},
-        {'params': model.person_id.bottleneck.parameters(), 'lr': 0.01},
-        {'params': model.person_id.classifier.parameters(), 'lr': 0.01},
-        {'params': model.discriminator.parameters(), 'lr': 0.05}
+        {'params': base_params_reid, 'lr': args.lr_F * 0.01},
+        {'params': model.person_id.bottleneck.parameters(), 'lr': args.lr_F},
+        {'params': model.person_id.classifier.parameters(), 'lr': args.lr_F},
+        {'params': model.discriminator.parameters(), 'lr': args.lr_F}
     ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
     scheduler = None
     if args.sched == "cycle":
         scheduler = CycleScheduler(
             optimizer,
-            args.lr,
+            args.lr_G,
             n_iter=len(dataset) * args.epoch,
             momentum=None,
             warmup_proportion=0.05,
@@ -434,7 +433,8 @@ if __name__ == "__main__":
     parser.add_argument("--size", type=int, default=256)
     parser.add_argument("--epoch", type=int, default=560)
     parser.add_argument("--start", "-s", type=int, default=0)
-    parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--lr_G", type=float, default=3e-4)
+    parser.add_argument("--lr_F", type=float, default=0.1)
     parser.add_argument("--sched", type=str)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--num_pos", type=int, default=4)
