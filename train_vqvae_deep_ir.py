@@ -370,10 +370,10 @@ def main(args):
     base_params_reid = filter(lambda p: id(p) not in ignored_params_reid, model.person_id.parameters())
 
     optimizer_reID = optim.SGD([
-        {'params': base_params_reid, 'lr': 0.1 * 0.001},
-        {'params': model.person_id.bottleneck.parameters(), 'lr': 0.001},
-        {'params': model.person_id.classifier.parameters(), 'lr': 0.001},
-        {'params': model.discriminator.parameters(), 'lr': 0.005}
+        {'params': base_params_reid, 'lr': 0.1 * 0.01},
+        {'params': model.person_id.bottleneck.parameters(), 'lr': 0.01},
+        {'params': model.person_id.classifier.parameters(), 'lr': 0.01},
+        {'params': model.discriminator.parameters(), 'lr': 0.05}
     ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
     scheduler = None
@@ -393,8 +393,8 @@ def main(args):
             dataset, batch_size=loader_batch // args.n_gpu, sampler=sampler, num_workers=args.workers
         )
 
-        if i == args.start:
-            validate(0, model, args=args, mode='all')
+        # if i == args.start:
+        #     validate(0, model, args=args, mode='all')
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i >= stage_reconstruction and i % 4 == 0:
             mAP = validate(0, model, args=args, mode='all')
