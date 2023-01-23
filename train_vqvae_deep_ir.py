@@ -170,8 +170,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
             model.person_id.requires_grad_(True)
             model.person_id.train()
-            model.discriminator.requires_grad_(True)
-            model.discriminator.train()
+            # model.discriminator.requires_grad_(True)
+            # model.discriminator.train()
 
             feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, xZ=inter.detach(),  modal=0, with_feature=True)
             featV, featT, featZ = torch.split(feat, bs)
@@ -190,8 +190,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             modal_free_loss = criterion(featZ, featV)
 
 
-            predict_true_modals = (torch.cat((model.discriminator(gray), model.discriminator(inter.detach()), model.discriminator(aug_ir)), 0))
-            disc_loss_true = F.binary_cross_entropy(predict_true_modals.squeeze(), modal_labels_true.float())
+            # predict_true_modals = (torch.cat((model.discriminator(gray), model.discriminator(inter.detach()), model.discriminator(aug_ir)), 0))
+            # disc_loss_true = F.binary_cross_entropy(predict_true_modals.squeeze(), modal_labels_true.float())
 
             # feat_fake, score_fake, _, _, _ = model.person_id(xRGB = None, xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
             # loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
@@ -200,7 +200,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             loss_fake = modal_free_loss
 
             optimizer_reid.zero_grad()
-            loss_Re = loss_id_real + loss_triplet + loss_fake + disc_loss_true
+            loss_Re = loss_id_real + loss_triplet + loss_fake #+ disc_loss_true
             loss_Re.backward()
             optimizer_reid.step()
 
@@ -229,8 +229,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.01) #criterion(featG, feat[bs:].detach())
             loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
-            predict_fake_modals = model.discriminator(inter)
-            disc_loss_fake = F.binary_cross_entropy(predict_fake_modals.squeeze(), modal_labels_fake.float())
+            # predict_fake_modals = model.discriminator(inter)
+            # disc_loss_fake = F.binary_cross_entropy(predict_fake_modals.squeeze(), modal_labels_fake.float())
 
             # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
             #                   criterion(gray_content_other, rgb_content_itself)
