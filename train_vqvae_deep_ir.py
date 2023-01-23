@@ -132,7 +132,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         ir_reconst = model.decode(ir_content_itself).expand(-1, 3, -1, -1)
         recon_loss = criterion(ir_reconst, img2)
         loss_G = (recon_loss + latent_loss_weight * latent_loss)
-        loss_feat_ir = loss_Re_Ir = loss_Re = torch.Tensor([-1])
+        loss_feat_ir = loss_Re_Ir = loss_Re = disc_loss_true= disc_loss_fake = torch.Tensor([-1])
 
         modal_labels_true = torch.cat((torch.zeros_like(label1), torch.zeros_like(label1), torch.ones_like(label2)), 0).cuda() # color : 0, inter:0, ir : 1
         modal_labels_fake = torch.ones_like(label1).cuda() # inter: 1
