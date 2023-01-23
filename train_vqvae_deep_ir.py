@@ -236,7 +236,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
             #                   criterion(gray_content_other, rgb_content_itself)
 
-            loss_G = loss_G + 0.1 * (loss_Re_Ir + disc_loss_fake) + latent_loss_weight * latent_loss_ir
+            loss_G = loss_G + 0.1 * (loss_Re_Ir) + latent_loss_weight * latent_loss_ir
               # + loss_id_fake + feat_loss + loss_kl_fake
 
 
