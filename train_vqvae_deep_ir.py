@@ -111,7 +111,7 @@ def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     loss_Re = loss_id_real + loss_triplet + modal_free_loss
     loss_Re.backward()
     optimizer_reid.step()
-    return loss_Re
+    return loss_Re, actMap
 
 def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     if dist.is_primary():
@@ -155,7 +155,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         modal_labels_fake = torch.ones_like(label1).cuda() # inter: 1
 
         if epoch < stage_reconstruction:
-            loss_Re = train_first_reid(epoch, model, optimizer_reid, aug_rgb, aug_ir, labels)
+            loss_Re, actMap = train_first_reid(epoch, model, optimizer_reid, aug_rgb, aug_ir, labels)
+            upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
         else :
             w = torch.rand(bs, 3).cuda() + 0.01
             w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
