@@ -107,6 +107,7 @@ def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     # var = Feat.var(dim=1)
     # mean = Feat.mean(dim=1)
     modal_free_loss = criterion(featZ, featV)
+    print(modal_free_loss, loss_id_real, loss_triplet)
     optimizer_reid.zero_grad()
     loss_Re = loss_id_real + loss_triplet + modal_free_loss
     loss_Re.backward()
