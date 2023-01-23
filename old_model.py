@@ -6,7 +6,7 @@ import torchvision
 import copy
 import torch.nn.functional as F
 
-from model import weights_init_kaiming, weights_init_classifier,Normalize
+from model import weights_init_kaiming, weights_init_classifier, Normalize, compute_mask
 
 
 class Non_local(nn.Module):
@@ -179,6 +179,7 @@ class embed_net2(nn.Module):
                     _, C, H, W = x.shape
                     x = self.NL_3[NL3_counter](x)
                     NL3_counter += 1
+            x3 = x #layer
             # Layer 4
             NL4_counter = 0
             if len(self.NL_4_idx) == 0: self.NL_4_idx = [-1]
@@ -204,7 +205,8 @@ class embed_net2(nn.Module):
 
 
         if with_feature:
-            return feat, self.classifier(feat), x, None, None
+            person_mask = compute_mask(x)
+            return feat, self.classifier(feat), x, person_mask, x3
 
         if self.training :
             return feat, self.classifier(feat)

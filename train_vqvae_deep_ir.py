@@ -180,7 +180,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             # ones = actMap > (m + 0.02)
             # actMap[zeros] = 0
             # actMap[ones] = 1
-            # upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
+            upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
             loss_id_real = torch.nn.functional.cross_entropy(score, labels)
             loss_triplet = triplet_criterion(feat, labels)[0]
@@ -288,13 +288,13 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 ir_rec = ir_reconst[index]
                 rgb2ir = inter[index] if epoch > stage_reconstruction else img2[index]
                 g = gray[index] if epoch > stage_reconstruction else rgb
-
+                mask = upMask[index]
                 # with torch.no_grad():
                 #     out, _ = model(sample)
                 # model.train()
 
                 utils.save_image(
-                    invTrans(torch.cat([rgb, g, rgb2ir, ir, ir_rec], 0)),
+                    invTrans(torch.cat([rgb, g, rgb2ir, ir, ir_rec, mask], 0)),
                     f"sample-new/ir50_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(rgb),
                     # normalize=True,
