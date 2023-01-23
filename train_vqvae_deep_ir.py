@@ -61,6 +61,8 @@ aug_transforms_rec = transforms.Compose([
     RandomCropBoxes(n=10, size=10)
 ])
 
+criterion = nn.MSELoss()
+triplet_criterion = TripletLoss_WRT()
 
 def random_pair(args):
     l = np.arange(args.batch_size) * args.num_pos
@@ -70,12 +72,35 @@ def random_pair(args):
     ids = ids.reshape(-1)
     return ids
 
+def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
+    bs = rgb.shape[0]
+    w = torch.rand(bs, 3).cuda() + 0.01
+    w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
+    gray = torch.einsum('b c w h, b c -> b w h', rgb, w).unsqueeze(1).expand(-1, 3, -1, -1)
+    invIndex = np.random.choice(bs, bs // 2, replace=False)
+    gray[invIndex] = 1 - gray[invIndex]
+
+    feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=rgb, xIR=ir, xZ=gray, modal=0,
+                                                             with_feature=True)
+    featV, featT, featZ = torch.split(feat, bs)
+
+    loss_id_real = torch.nn.functional.cross_entropy(score, labels)
+    loss_triplet = triplet_criterion(feat, labels)[0]
+    Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // bs)
+    # var = Feat.var(dim=1)
+    # mean = Feat.mean(dim=1)
+    modal_free_loss = criterion(featZ, featV)
+    optimizer_reid.zero_grad()
+    loss_Re = loss_id_real + loss_triplet + modal_free_loss
+    loss_Re.backward()
+    optimizer_reid.step()
+    return loss_Re
+
 def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     if dist.is_primary():
         loader = tqdm(loader)
 
-    criterion = nn.MSELoss()
-    triplet_criterion = TripletLoss_WRT()
+
 
     latent_loss_weight = 0.25
     sample_size = 16
@@ -112,8 +137,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         modal_labels_true = torch.cat((torch.zeros_like(label1), torch.zeros_like(label1), torch.ones_like(label2)), 0).cuda() # color : 0, inter:0, ir : 1
         modal_labels_fake = torch.ones_like(label1).cuda() # inter: 1
 
-
-        if epoch > stage_reconstruction :
+        if epoch < stage_reconstruction:
+            loss_Re = train_first_reid(epoch, model, optimizer_reid, aug_rgb, aug_ir, labels)
+        else :
             w = torch.rand(bs, 3).cuda() + 0.01
             w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
             gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
@@ -252,7 +278,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
                 utils.save_image(
                     invTrans(torch.cat([rgb, g, rgb2ir, ir, ir_rec], 0)),
-                    f"sample-deep-transfer/ir50_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
+                    f"sample-new/ir50_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(rgb),
                     # normalize=True,
                     range=(-1, 1),
@@ -363,13 +389,13 @@ def main(args):
                     "epoch": best_i,
                     "net": model.state_dict()
                 }
-                torch.save(obj, f"checkpoint-deep-transfer/vqvae_ir50Z_best.pt")
+                torch.save(obj, f"checkpoint-new/vqvae_ir50Z_best.pt")
             print('best mAP: {:.2%}| epoch: {}'.format(best_mAP, best_i))
 
         model.person_id.train()
-        torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir50Z_last.pt")
+        torch.save(model.state_dict(), f"checkpoint-new/vqvae_ir50Z_last.pt")
         if i % 10 == 0 and dist.is_primary():
-            torch.save(model.state_dict(), f"checkpoint-deep-transfer/vqvae_ir50Z_{str(i + 1).zfill(3)}.pt")
+            torch.save(model.state_dict(), f"checkpoint-new/vqvae_ir50Z_{str(i + 1).zfill(3)}.pt")
 
 
 
