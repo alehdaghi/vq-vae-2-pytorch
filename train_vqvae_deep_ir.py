@@ -32,7 +32,7 @@ invTrans = transforms.Compose([
     transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
 ])
 
-stage_reconstruction = -1
+stage_reconstruction = 40
 
 class RandomCropBoxes:
     def __init__(self, n, size):
