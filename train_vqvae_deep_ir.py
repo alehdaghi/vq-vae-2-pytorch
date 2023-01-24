@@ -364,7 +364,7 @@ def main(args):
 
     dataset = SYSUData(args.path, transform=transform)
     loader_batch = args.batch_size * args.num_pos
-    vq_vae = VQVAE(out_channel=1).to(device)
+    vq_vae = VQVAE(out_channel=3).to(device)
     model = ModelAdaptive_Deep(dataset.num_class, vq_vae, arch='resnet50').to(device)
     # model.person_id = embed_net2(dataset.num_class).to(device)
     # checkpoint = torch.load(
