@@ -114,9 +114,9 @@ def train_joint(epoch, model, ir, labels_ir, optimizer, optimizer_reid, schedule
     optimizer.zero_grad()
 
     loss_Re = loss_id_real + loss_triplet
-    loss_Re.backward(retain_graph=True)
-
-    loss_G.backward()
+    # loss_Re.backward(retain_graph=True)
+    # loss_G.backward()
+    (loss_G + 0.3*loss_Re).backward()
     if scheduler is not None:
         scheduler.step()
     optimizer.step()
