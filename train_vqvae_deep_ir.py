@@ -90,20 +90,20 @@ def adjust_learning_rate(optimizer, epoch):
 
     return lr
 
-def train_joint(epoch, model, ir, labels_ir, optimizer, optimizer_reid, scheduler):
+def train_joint(epoch, model, rgb, ir, labels_ir, optimizer, optimizer_reid, scheduler):
     ir_b, ir_t = model.encode_content(ir)
     ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
     ir_reconst = model.decode(ir_content_itself).expand(-1, 3, -1, -1)
     recon_loss = criterion(ir_reconst, ir)
     loss_G = (recon_loss + latent_loss_weight * latent_loss)
 
-    X4 = model.person_id.base_resnet(ir_t)
-    feat = model.person_id.bottleneck(model.person_id.gl_pool(X4, 'off'))
+    # X4 = model.person_id.base_resnet(ir_t)
+    # feat = model.person_id.bottleneck(model.person_id.gl_pool(X4, 'off'))
+    #
+    # score = model.person_id.classifier(feat)
 
-    score = model.person_id.classifier(feat)
-
-    loss_id_real = torch.nn.functional.cross_entropy(score, labels_ir)
-    loss_triplet = triplet_criterion(feat, labels_ir)[0]
+    # loss_id_real = torch.nn.functional.cross_entropy(score, labels_ir)
+    # loss_triplet = triplet_criterion(feat, labels_ir)[0]
     # Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // bs)
     # var = Feat.var(dim=1)
     # mean = Feat.mean(dim=1)
@@ -113,10 +113,11 @@ def train_joint(epoch, model, ir, labels_ir, optimizer, optimizer_reid, schedule
     optimizer_reid.zero_grad()
     optimizer.zero_grad()
 
-    loss_Re = loss_id_real + loss_triplet
+    # loss_Re = loss_id_real + loss_triplet
+    loss_Re = loss_G
     # loss_Re.backward(retain_graph=True)
-    # loss_G.backward()
-    (loss_G + 0.3*loss_Re).backward()
+    loss_G.backward()
+    # (loss_G + 0.3*loss_Re).backward()
     if scheduler is not None:
         scheduler.step()
     optimizer.step()
@@ -181,7 +182,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         loss_feat_ir = loss_Re_Ir = loss_Re = disc_loss_true = disc_loss_fake = torch.Tensor([-1])
 
         if True:
-            loss_G, loss_Re, recon_loss, latent_loss, ir_reconst = train_joint(epoch,model, img2, label2, optimizer, optimizer_reid, scheduler)
+            loss_G, loss_Re, recon_loss, latent_loss, ir_reconst = train_joint(epoch,model,img1, img2, label2, optimizer, optimizer_reid, scheduler)
         else:
             ir_b, ir_t = model.encode_content(img2)
             ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
