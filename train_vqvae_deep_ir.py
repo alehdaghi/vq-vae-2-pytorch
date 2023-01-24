@@ -32,7 +32,7 @@ invTrans = transforms.Compose([
     transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
 ])
 
-stage_reconstruction = 240
+stage_reconstruction = 40
 
 class RandomCropBoxes:
     def __init__(self, n, size):
@@ -181,13 +181,14 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         bs = img1.size(0)
         loss_feat_ir = loss_Re_Ir = loss_Re = disc_loss_true = disc_loss_fake = torch.Tensor([-1])
 
-        if True:
+        if False:
             loss_G, loss_Re, recon_loss, latent_loss, ir_reconst = train_joint(epoch,model,img1, img2, label2, optimizer, optimizer_reid, scheduler)
         else:
             ir_b, ir_t = model.encode_content(img2)
             ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
-            ir_reconst = model.decode(ir_content_itself).expand(-1, 3, -1, -1)
-            recon_loss = criterion(ir_reconst, img2)
+            ir_reconst = model.decode(ir_content_itself)
+            recon_loss = criterion(ir_reconst, img2.mean(1,True))
+
             loss_G = (recon_loss + latent_loss_weight * latent_loss)
 
             modal_labels_true = torch.cat((torch.zeros_like(label1), torch.zeros_like(label1), torch.ones_like(label2)), 0).cuda() # color : 0, inter:0, ir : 1
@@ -201,7 +202,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
                 gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
                 invIndex = np.random.choice(bs, bs // 2, replace=False)
-                gray[invIndex] = 1 - gray[invIndex]
+                # gray[invIndex] = 1 - gray[invIndex]
 
                 rgb_b, rgb_t = model.encode_content(gray)
                 rgb_b_f, rgb_t_f = rgb_b, rgb_t#model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
@@ -254,19 +255,21 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
                 FV = einops.rearrange(featV.detach(), '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1) # reshaped to b * p
                 sV = FV.sum(dim=1, keepdim=True) # sum of features for each person
-                centerV = (sV - FV) / (args.num_pos - 1) # make centers of others for each person
+                centerV_ex = (sV - FV) / (args.num_pos - 1) # make centers of others for each person
 
                 FG = einops.rearrange(featG, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1)  # reshaped to b * p
                 sG = FG.sum(dim=1, keepdim=True)  # sum of features for each person
                 centerG_X = (sG - FG) / (args.num_pos - 1)  # make centers of others for each person
 
                 # centerV = einops.rearrange(feat[:bs], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
-                centerT = einops.rearrange(featT, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+                centerT = einops.rearrange(featT.detach(), '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
                 centerG = FG.mean(dim=1)
+                centerV = FV.mean(dim=1)
 
-                pos = (centerG - centerT.detach()).pow(2).mean(dim=1)
-                neg = (centerG_X - centerV.detach()).pow(2).mean(dim=-1).mean(dim=1)
-                loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.01) #criterion(featG, feat[bs:].detach())
+                pos = (centerG - centerT).pow(2).mean(dim=1)
+                neg = (centerG_X - centerV_ex).pow(2).mean(dim=-1).mean(dim=1)
+                # loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.01) #criterion(featG, feat[bs:].detach())
+                loss_feat_ir = criterion(centerG, (centerV+centerT)/2)
                 loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
                 # predict_fake_modals = model.discriminator(inter)
@@ -325,7 +328,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
                 rgb = aug_rgb[index]
                 ir = aug_ir[index]
-                ir_rec = ir_reconst[index]
+                ir_rec = ir_reconst[index].expand(-1,3,-1,-1)
                 rgb2ir = inter[index] if epoch > stage_reconstruction else img2[index]
                 g = gray[index] if epoch > stage_reconstruction else rgb
                 # mask = upMask[index]
@@ -366,7 +369,7 @@ def main(args):
     loader_batch = args.batch_size * args.num_pos
     vq_vae = VQVAE(out_channel=1).to(device)
     model = ModelAdaptive_Deep(dataset.num_class, vq_vae, arch='resnet50').to(device)
-    # model.person_id = embed_net2(dataset.num_class).to(device)
+    model.person_id = embed_net2(dataset.num_class).to(device)
     # checkpoint = torch.load(
     #     '/home/mahdi/PycharmProjects/vq-vae-2-pytorch/sysu_att_p8_n4_lr_0.03_seed_0_gray_randChanU2_best.t')
     # model.person_id.load_state_dict(checkpoint['net'])
