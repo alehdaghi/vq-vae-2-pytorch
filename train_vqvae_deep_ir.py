@@ -184,7 +184,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         if False:
             loss_G, loss_Re, recon_loss, latent_loss, ir_reconst = train_joint(epoch,model,img1, img2, label2, optimizer, optimizer_reid, scheduler)
         else:
-            ir_b, ir_t = model.encode_content(img2)
+            ir_b, ir_t = model.encode_content(aug_ir)
             ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
             ir_reconst = model.decode(ir_content_itself)
             recon_loss = criterion(ir_reconst, img2.mean(1,True))
