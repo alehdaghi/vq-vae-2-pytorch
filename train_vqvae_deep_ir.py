@@ -93,7 +93,7 @@ def adjust_learning_rate(optimizer, epoch):
 def train_joint(epoch, model, rgb, ir, labels_ir, optimizer, optimizer_reid, scheduler):
     ir_b, ir_t = model.encode_content(ir)
     ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
-    ir_reconst = model.decode(ir_content_itself).expand(-1, 3, -1, -1)
+    ir_reconst = model.decode(ir_content_itself)#.expand(-1, 3, -1, -1)
     recon_loss = criterion(ir_reconst, ir)
     loss_G = (recon_loss + latent_loss_weight * latent_loss)
 
