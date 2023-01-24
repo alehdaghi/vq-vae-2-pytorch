@@ -122,7 +122,7 @@ def train_joint(epoch, model, rgb, ir, labels_ir, optimizer, optimizer_reid, sch
         scheduler.step()
     optimizer.step()
     optimizer_reid.step()
-    return loss_G, loss_Re, recon_loss, latent_loss, ir_reconst
+    return loss_G, loss_Re, recon_loss, latent_loss, ir_reconst.expand(-1,3,-1,-1)
 
 def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     bs = rgb.shape[0]
