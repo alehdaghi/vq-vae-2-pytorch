@@ -63,6 +63,7 @@ aug_transforms_rec = transforms.Compose([
 
 criterion = nn.MSELoss()
 triplet_criterion = TripletLoss_WRT()
+latent_loss_weight = 0.25
 
 def random_pair(args):
     l = np.arange(args.batch_size) * args.num_pos
@@ -89,6 +90,39 @@ def adjust_learning_rate(optimizer, epoch):
 
     return lr
 
+def train_joint(epoch, model, ir, labels_ir, optimizer, optimizer_reid, scheduler):
+    ir_b, ir_t = model.encode_content(ir)
+    ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
+    ir_reconst = model.decode(ir_content_itself).expand(-1, 3, -1, -1)
+    recon_loss = criterion(ir_reconst, ir)
+    loss_G = (recon_loss + latent_loss_weight * latent_loss)
+
+    X4 = model.person_id.base_resnet(ir_t)
+    feat = model.person_id.bottleneck(model.person_id.gl_pool(X4, 'off'))
+
+    score = model.person_id.classifier(feat)
+
+    loss_id_real = torch.nn.functional.cross_entropy(score, labels_ir)
+    loss_triplet = triplet_criterion(feat, labels_ir)[0]
+    # Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // bs)
+    # var = Feat.var(dim=1)
+    # mean = Feat.mean(dim=1)
+
+
+
+    optimizer_reid.zero_grad()
+    optimizer.zero_grad()
+
+    loss_Re = loss_id_real + loss_triplet
+    loss_Re.backward(retain_graph=True)
+
+    loss_G.backward()
+    if scheduler is not None:
+        scheduler.step()
+    optimizer.step()
+    optimizer_reid.step()
+    return loss_G, loss_Re, recon_loss, latent_loss, ir_reconst
+
 def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     bs = rgb.shape[0]
     w = torch.rand(bs, 3).cuda() + 0.01
@@ -112,6 +146,7 @@ def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     loss_Re.backward()
     optimizer_reid.step()
     return loss_Re, actMap
+
 
 def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
     if dist.is_primary():
@@ -143,108 +178,111 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         aug_rgb = aug_transforms(img1)
         aug_ir = aug_transforms(img2)
         bs = img1.size(0)
+        loss_feat_ir = loss_Re_Ir = loss_Re = disc_loss_true = disc_loss_fake = torch.Tensor([-1])
 
-        ir_b, ir_t = model.encode_content(img2)
-        ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
-        ir_reconst = model.decode(ir_content_itself).expand(-1, 3, -1, -1)
-        recon_loss = criterion(ir_reconst, img2)
-        loss_G = (recon_loss + latent_loss_weight * latent_loss)
-        loss_feat_ir = loss_Re_Ir = loss_Re = disc_loss_true= disc_loss_fake = torch.Tensor([-1])
+        if True:
+            loss_G, loss_Re, recon_loss, latent_loss, ir_reconst = train_joint(epoch,model, img2, label2, optimizer, optimizer_reid, scheduler)
+        else:
+            ir_b, ir_t = model.encode_content(img2)
+            ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
+            ir_reconst = model.decode(ir_content_itself).expand(-1, 3, -1, -1)
+            recon_loss = criterion(ir_reconst, img2)
+            loss_G = (recon_loss + latent_loss_weight * latent_loss)
 
-        modal_labels_true = torch.cat((torch.zeros_like(label1), torch.zeros_like(label1), torch.ones_like(label2)), 0).cuda() # color : 0, inter:0, ir : 1
-        modal_labels_fake = torch.ones_like(label1).cuda() # inter: 1
+            modal_labels_true = torch.cat((torch.zeros_like(label1), torch.zeros_like(label1), torch.ones_like(label2)), 0).cuda() # color : 0, inter:0, ir : 1
+            modal_labels_fake = torch.ones_like(label1).cuda() # inter: 1
 
-        if epoch < stage_reconstruction:
-            loss_Re, actMap = train_first_reid(epoch, model, optimizer_reid, aug_rgb, aug_ir, labels)
-            upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
-        else :
-            w = torch.rand(bs, 3).cuda() + 0.01
-            w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
-            gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
-            invIndex = np.random.choice(bs, bs // 2, replace=False)
-            gray[invIndex] = 1 - gray[invIndex]
+            if epoch < stage_reconstruction:
+                loss_Re, actMap = train_first_reid(epoch, model, optimizer_reid, aug_rgb, aug_ir, labels)
+                upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
+            else :
+                w = torch.rand(bs, 3).cuda() + 0.01
+                w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
+                gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
+                invIndex = np.random.choice(bs, bs // 2, replace=False)
+                gray[invIndex] = 1 - gray[invIndex]
 
-            rgb_b, rgb_t = model.encode_content(gray)
-            rgb_b_f, rgb_t_f = rgb_b, rgb_t#model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
-            rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
-            inter = model.decode(rgb_content).expand(-1,3,-1,-1)
+                rgb_b, rgb_t = model.encode_content(gray)
+                rgb_b_f, rgb_t_f = rgb_b, rgb_t#model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
+                rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
+                inter = model.decode(rgb_content).expand(-1,3,-1,-1)
 
-            model.person_id.requires_grad_(True)
-            model.person_id.train()
-            # model.discriminator.requires_grad_(True)
-            # model.discriminator.train()
+                model.person_id.requires_grad_(True)
+                model.person_id.train()
+                # model.discriminator.requires_grad_(True)
+                # model.discriminator.train()
 
-            feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, xZ=inter.detach(),  modal=0, with_feature=True)
-            featV, featT, featZ = torch.split(feat, bs)
-            # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
-            # zeros = actMap < (m - 0.1)
-            # ones = actMap > (m + 0.02)
-            # actMap[zeros] = 0
-            # actMap[ones] = 1
-            upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
+                feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, xZ=inter.detach(),  modal=0, with_feature=True)
+                featV, featT, featZ = torch.split(feat, bs)
+                # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
+                # zeros = actMap < (m - 0.1)
+                # ones = actMap > (m + 0.02)
+                # actMap[zeros] = 0
+                # actMap[ones] = 1
+                upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
-            loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-            loss_triplet = triplet_criterion(feat, labels)[0]
-            Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
-            # var = Feat.var(dim=1)
-            # mean = Feat.mean(dim=1)
-            modal_free_loss = criterion(featZ, featV)
-
-
-            # predict_true_modals = (torch.cat((model.discriminator(gray), model.discriminator(inter.detach()), model.discriminator(aug_ir)), 0))
-            # disc_loss_true = F.binary_cross_entropy(predict_true_modals.squeeze(), modal_labels_true.float())
-
-            # feat_fake, score_fake, _, _, _ = model.person_id(xRGB = None, xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
-            # loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
-            # loss_triplet_fake, _ = triplet_criterion(feat_fake, labels)
-            # modal_free_loss = criterion(feat_fake, feat)
-            loss_fake = modal_free_loss
-
-            optimizer_reid.zero_grad()
-            loss_Re = loss_id_real + loss_triplet + loss_fake #+ disc_loss_true
-            loss_Re.backward()
-            optimizer_reid.step()
-
-            model.person_id.requires_grad_(False)
-            model.person_id.eval()
-            # model.discriminator.requires_grad_(False)
-            # model.discriminator.eval()
-
-            featG, score, _, _, _ = model.person_id(xRGB=None, xIR=inter, modal=2, with_feature=True)
-            loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
-
-            FV = einops.rearrange(featV.detach(), '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1) # reshaped to b * p
-            sV = FV.sum(dim=1, keepdim=True) # sum of features for each person
-            centerV = (sV - FV) / (args.num_pos - 1) # make centers of others for each person
-
-            FG = einops.rearrange(featG, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1)  # reshaped to b * p
-            sG = FG.sum(dim=1, keepdim=True)  # sum of features for each person
-            centerG_X = (sG - FG) / (args.num_pos - 1)  # make centers of others for each person
-
-            # centerV = einops.rearrange(feat[:bs], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
-            centerT = einops.rearrange(featT, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
-            centerG = FG.mean(dim=1)
-
-            pos = (centerG - centerT.detach()).pow(2).mean(dim=1)
-            neg = (centerG_X - centerV.detach()).pow(2).mean(dim=-1).mean(dim=1)
-            loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.01) #criterion(featG, feat[bs:].detach())
-            loss_Re_Ir = loss_id_real_ir + loss_feat_ir
-
-            # predict_fake_modals = model.discriminator(inter)
-            # disc_loss_fake = F.binary_cross_entropy(predict_fake_modals.squeeze(), modal_labels_fake.float())
-
-            # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
-            #                   criterion(gray_content_other, rgb_content_itself)
-
-            loss_G = loss_G + 0.1 * (loss_Re_Ir) + latent_loss_weight * latent_loss_ir
-              # + loss_id_fake + feat_loss + loss_kl_fake
+                loss_id_real = torch.nn.functional.cross_entropy(score, labels)
+                loss_triplet = triplet_criterion(feat, labels)[0]
+                Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
+                # var = Feat.var(dim=1)
+                # mean = Feat.mean(dim=1)
+                modal_free_loss = criterion(featZ, featV)
 
 
-        optimizer.zero_grad()
-        loss_G.backward()
-        if scheduler is not None:
-            scheduler.step()
-        optimizer.step()
+                # predict_true_modals = (torch.cat((model.discriminator(gray), model.discriminator(inter.detach()), model.discriminator(aug_ir)), 0))
+                # disc_loss_true = F.binary_cross_entropy(predict_true_modals.squeeze(), modal_labels_true.float())
+
+                # feat_fake, score_fake, _, _, _ = model.person_id(xRGB = None, xZ=inter.detach(), xIR=ir_reconst.detach(), modal=0, with_feature=True)
+                # loss_id_fake = torch.nn.functional.cross_entropy(score_fake, labels)
+                # loss_triplet_fake, _ = triplet_criterion(feat_fake, labels)
+                # modal_free_loss = criterion(feat_fake, feat)
+                loss_fake = modal_free_loss
+
+                optimizer_reid.zero_grad()
+                loss_Re = loss_id_real + loss_triplet + loss_fake #+ disc_loss_true
+                loss_Re.backward()
+                optimizer_reid.step()
+
+                model.person_id.requires_grad_(False)
+                model.person_id.eval()
+                # model.discriminator.requires_grad_(False)
+                # model.discriminator.eval()
+
+                featG, score, _, _, _ = model.person_id(xRGB=None, xIR=inter, modal=2, with_feature=True)
+                loss_id_real_ir = torch.nn.functional.cross_entropy(score, label1)
+
+                FV = einops.rearrange(featV.detach(), '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1) # reshaped to b * p
+                sV = FV.sum(dim=1, keepdim=True) # sum of features for each person
+                centerV = (sV - FV) / (args.num_pos - 1) # make centers of others for each person
+
+                FG = einops.rearrange(featG, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1)  # reshaped to b * p
+                sG = FG.sum(dim=1, keepdim=True)  # sum of features for each person
+                centerG_X = (sG - FG) / (args.num_pos - 1)  # make centers of others for each person
+
+                # centerV = einops.rearrange(feat[:bs], '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+                centerT = einops.rearrange(featT, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=1).mean(dim=1)
+                centerG = FG.mean(dim=1)
+
+                pos = (centerG - centerT.detach()).pow(2).mean(dim=1)
+                neg = (centerG_X - centerV.detach()).pow(2).mean(dim=-1).mean(dim=1)
+                loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.01) #criterion(featG, feat[bs:].detach())
+                loss_Re_Ir = loss_id_real_ir + loss_feat_ir
+
+                # predict_fake_modals = model.discriminator(inter)
+                # disc_loss_fake = F.binary_cross_entropy(predict_fake_modals.squeeze(), modal_labels_fake.float())
+
+                # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
+                #                   criterion(gray_content_other, rgb_content_itself)
+
+                loss_G = loss_G + 0.1 * (loss_Re_Ir) + latent_loss_weight * latent_loss_ir
+                  # + loss_id_fake + feat_loss + loss_kl_fake
+
+
+            optimizer.zero_grad()
+            loss_G.backward()
+            if scheduler is not None:
+                scheduler.step()
+            optimizer.step()
 
 
 
@@ -289,13 +327,13 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 ir_rec = ir_reconst[index]
                 rgb2ir = inter[index] if epoch > stage_reconstruction else img2[index]
                 g = gray[index] if epoch > stage_reconstruction else rgb
-                mask = upMask[index]
+                # mask = upMask[index]
                 # with torch.no_grad():
                 #     out, _ = model(sample)
                 # model.train()
 
                 utils.save_image(
-                    invTrans(torch.cat([rgb, g, rgb2ir, ir, ir_rec, mask.expand(-1, 3, -1, -1)], 0)),
+                    invTrans(torch.cat([rgb, g, rgb2ir, ir, ir_rec ], 0)),
                     f"sample-new/ir50_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(rgb),
                     # normalize=True,
@@ -327,7 +365,7 @@ def main(args):
     loader_batch = args.batch_size * args.num_pos
     vq_vae = VQVAE(out_channel=1).to(device)
     model = ModelAdaptive_Deep(dataset.num_class, vq_vae, arch='resnet50').to(device)
-    model.person_id = embed_net2(dataset.num_class).to(device)
+    # model.person_id = embed_net2(dataset.num_class).to(device)
     # checkpoint = torch.load(
     #     '/home/mahdi/PycharmProjects/vq-vae-2-pytorch/sysu_att_p8_n4_lr_0.03_seed_0_gray_randChanU2_best.t')
     # model.person_id.load_state_dict(checkpoint['net'])
