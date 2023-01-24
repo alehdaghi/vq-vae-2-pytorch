@@ -32,7 +32,7 @@ invTrans = transforms.Compose([
     transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
 ])
 
-stage_reconstruction = 40
+stage_reconstruction = 240
 
 class RandomCropBoxes:
     def __init__(self, n, size):
@@ -93,8 +93,8 @@ def adjust_learning_rate(optimizer, epoch):
 def train_joint(epoch, model, rgb, ir, labels_ir, optimizer, optimizer_reid, scheduler):
     ir_b, ir_t = model.encode_content(ir)
     ir_content_itself, latent_loss = model.quantize_content(ir_b, ir_t)
-    ir_reconst = model.decode(ir_content_itself)#.expand(-1, 3, -1, -1)
-    recon_loss = criterion(ir_reconst, ir)
+    ir_reconst = model.decode(ir_content_itself)
+    recon_loss = criterion(ir_reconst, ir.mean(dim=1, keepdim=True))
     loss_G = (recon_loss + latent_loss_weight * latent_loss)
 
     # X4 = model.person_id.base_resnet(ir_t)
@@ -364,7 +364,7 @@ def main(args):
 
     dataset = SYSUData(args.path, transform=transform)
     loader_batch = args.batch_size * args.num_pos
-    vq_vae = VQVAE(out_channel=3).to(device)
+    vq_vae = VQVAE(out_channel=1).to(device)
     model = ModelAdaptive_Deep(dataset.num_class, vq_vae, arch='resnet50').to(device)
     # model.person_id = embed_net2(dataset.num_class).to(device)
     # checkpoint = torch.load(
