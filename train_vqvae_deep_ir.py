@@ -138,7 +138,7 @@ def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=rgb, xIR=ir,  modal=0,
                                                              with_feature=True)
     featV, featT = torch.split(feat, bs)
-    labelV, labelT = torch.split(labels, bs)
+    labelV, labelT, labelZ = torch.split(labels, bs)
 
     loss_id_real = torch.nn.functional.cross_entropy(score, labels)
     loss_triplet = cross_triplet_criterion(featV, featV, featV, labelV, labelV, labelV) +\
