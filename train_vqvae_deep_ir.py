@@ -140,7 +140,7 @@ def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     featV, featT = torch.split(feat, bs)
     labelV, labelT, labelZ = torch.split(labels, bs)
 
-    loss_id_real = torch.nn.functional.cross_entropy(score, labels)
+    loss_id_real = torch.nn.functional.cross_entropy(score, labels[:2*bs])
     loss_triplet = cross_triplet_criterion(featV, featV, featV, labelV, labelV, labelV) +\
                    cross_triplet_criterion(featT, featT, featT, labelT, labelT, labelT)
     Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // bs)
