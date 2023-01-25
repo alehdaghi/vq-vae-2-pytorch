@@ -228,8 +228,9 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
                 loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-                loss_triplet = cross_triplet_criterion(featZ, featV, featZ, label1, label1, label1) + \
-                               cross_triplet_criterion(featT, featZ, featT, label2, label1, label2)
+                loss_triplet = cross_triplet_criterion(featV, featZ, featV, label1, label1, label1) + \
+                               cross_triplet_criterion(featT, featZ, featT, label2, label1, label2) + \
+                               cross_triplet_criterion(featZ, featT, featZ, label2, label1, label2)
                 Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
                 # var = Feat.var(dim=1)
                 # mean = Feat.mean(dim=1)
@@ -327,7 +328,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 )
             )
 
-            if i % 100 == 0:
+            if i % 300 == 0:
                 # model.eval()
                 index = np.random.choice(np.arange(bs), min(bs, sample_size), replace=False)
 
