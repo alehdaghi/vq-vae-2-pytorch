@@ -42,11 +42,11 @@ class RandomCropBoxes:
         self.p = p
 
     def __call__(self, imgs):
-        if np.random.rand() > self.p:
-            return imgs
         H, W = imgs.shape[-2:]
         for img in imgs:
-            h, w = np.random.randint(self.size - 10, self.size + 5), np.random.randint(self.size - 10, self.size + 5)
+            if np.random.rand() > self.p:
+                continue
+            h, w = np.random.randint(self.size - 15, self.size + 10), np.random.randint(self.size - 15, self.size + 10)
             y, x = np.random.randint(0, H - h, self.n), np.random.randint(0, W - w, self.n)
             for xx,yy in zip(x,y):
                 img[:, yy:yy + h, xx:xx + w] = random.random()
@@ -56,7 +56,7 @@ class RandomCropBoxes:
 aug_transforms = transforms.Compose([
     # T.ColorJitter(brightness=.15, hue=.13),
     T.ElasticTransform(alpha=25.0),
-    RandomCropBoxes(n=10, size=30, p=.5)
+    RandomCropBoxes(n=7, size=30, p=.5)
 ])
 
 aug_transforms_rec = transforms.Compose([
