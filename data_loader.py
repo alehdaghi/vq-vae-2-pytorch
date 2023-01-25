@@ -141,7 +141,7 @@ def GenIdx(train_color_label, train_ir_label):
 
 class TestData(data.Dataset):
     def __init__(self, test_img_file, test_label, test_cam, transform=None, img_size = (144,288), colorToGray=False):
-
+        self.gray = colorToGray
         test_image = []
         ret_test_label,  ret_test_cam = [],[]
         for i in range(len(test_img_file)):

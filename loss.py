@@ -130,3 +130,66 @@ class TripletLoss_WRT(nn.Module):
         # compute accuracy
         correct = torch.ge(closest_negative, furthest_positive).sum().item()
         return loss, correct
+
+
+class CrossTripletLoss(nn.Module):
+    '''
+    Compute Triplet losses augmented with Batch Hard
+    Details can be seen in 'In defense of the Triplet Loss for Person Re-Identification'
+    '''
+
+    def __init__(self, margin=0.3):
+        '''
+        :param margin: float or 'soft', for MarginRankingLoss with margin and soft margin
+        :param bh: batch hard
+        :param metric: l2 distance or cosine distance
+        '''
+        super(CrossTripletLoss, self).__init__()
+        self.margin = margin
+        self.margin_loss = nn.MarginRankingLoss(margin=margin)
+
+    def _label2similarity(sekf, label1, label2):
+        '''
+        compute similarity matrix of label1 and label2
+        :param label1: torch.Tensor, [m]
+        :param label2: torch.Tensor, [n]
+        :return: torch.Tensor, [m, n], {0, 1}
+        '''
+        m, n = len(label1), len(label2)
+        l1 = label1.view(m, 1).expand([m, n])
+        l2 = label2.view(n, 1).expand([n, m]).t()
+        similarity = l1 == l2
+        return similarity
+
+    def _batch_hard(self, mat_distance, mat_similarity):
+        hard_p, p_ind = torch.max(mat_distance + (-9999999.) * (1 - mat_similarity), dim=1)
+        # hard_p = sorted_mat_distance[:, 0]
+        hard_n, n_ind = torch.min(mat_distance + (9999999.) * (mat_similarity), dim=1)
+        # hard_n = sorted_mat_distance[:, 0]
+        return hard_p, hard_n, p_ind, n_ind
+
+
+    def forward(self, anchor, pos, neg, label1, label2, label3, with_index=False):
+        '''
+
+		:param anchor: torch.Tensor, [m, dim]
+		:param pos: torch.Tensor, [n, dim]
+		:param label1: torch.Tensor, [m]
+		:param label2: torch.Tensor, [b]
+		:return:
+		'''
+
+        mat_dist = pdist_torch(anchor, pos)
+        mat_sim = self._label2similarity(label1, label2)
+        hard_p, _, p_ind, _ = self._batch_hard(mat_dist, mat_sim.float())
+
+        mat_dist = pdist_torch(anchor, neg)
+        mat_sim = self._label2similarity(label1, label3)
+        _, hard_n, _, n_ind = self._batch_hard(mat_dist, mat_sim.float())
+
+        margin_label = torch.ones_like(hard_p)
+
+        if with_index:
+            return self.margin_loss(hard_n, hard_p, margin_label), p_ind, n_ind
+        else:
+            return self.margin_loss(hard_n, hard_p, margin_label)

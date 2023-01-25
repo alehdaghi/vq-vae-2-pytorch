@@ -55,15 +55,18 @@ def test(epoch, net, test_mode = [1, 2]):
     ptr = 0
     gall_feat = np.zeros((ngall, pool_dim))
     gall_feat_att = np.zeros((ngall, pool_dim))
+    g_l = np.zeros(ngall)
     with torch.no_grad():
         for batch_idx, (input, label, cam) in enumerate(gall_loader):
             batch_num = input.size(0)
             input = input.cuda()
             # input = net.encAndDec(input)
-            feat, feat_att = net.person_id(input, input, modal=test_mode[0])
-            gall_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
+            _, feat_att = net.person_id(input, input, modal=test_mode[0])
+            # gall_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             gall_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
+            g_l[ptr:ptr+batch_num] = label
             ptr = ptr + batch_num
+
     print('Extracting Time:\t {:.3f}'.format(time.time() - start))
 
     # switch to evaluation
@@ -71,7 +74,7 @@ def test(epoch, net, test_mode = [1, 2]):
     print('Extracting Query Feature...')
     start = time.time()
     ptr = 0
-    query_feat = np.zeros((nquery, pool_dim))
+    # query_feat = np.zeros((nquery, pool_dim))
     query_feat_att = np.zeros((nquery, pool_dim))
     time_inference = 0
     with torch.no_grad():
@@ -85,14 +88,14 @@ def test(epoch, net, test_mode = [1, 2]):
             time_inference += (time.time() - start1)
             #print('Extracting Time:\t {:.3f} len={:d}'.format(time.time() - start1, len(input)))
 
-            query_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
+            # query_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             query_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
             ptr = ptr + batch_num
     print('Extracting Time:\t {:.3f}'.format(time_inference))
     #exit(0)
     start = time.time()
     # compute the similarity
-    distmat = np.matmul(query_feat, np.transpose(gall_feat))
+    # distmat = np.matmul(query_feat, np.transpose(gall_feat))
     distmat_att = np.matmul(query_feat_att, np.transpose(gall_feat_att))
 
     # evaluation
@@ -101,12 +104,12 @@ def test(epoch, net, test_mode = [1, 2]):
     #     cmc_att, mAP_att, mINP_att  = eval_regdb(-distmat_att, query_label, gall_label)
     # elif dataset == 'sysu':
 
-    cmc, mAP, mINP = eval_sysu(-distmat, query_label, gall_label, query_cam, gall_cam)
-    cmc_att, mAP_att, mINP_att = eval_sysu(-distmat_att, query_label, gall_label, query_cam, gall_cam)
+    # cmc, mAP, mINP = eval_sysu(-distmat, query_label, gall_label, query_cam, gall_cam)
+    cmc_att, mAP_att, mINP_att = eval_sysu(-distmat_att, query_label, g_l, query_cam, gall_cam)
     print('Evaluation Time:\t {:.3f}'.format(time.time() - start))
 
 
-    return cmc, mAP, mINP, cmc_att, mAP_att, mINP_att
+    return cmc_att, mAP_att, mINP_att
 
 def validate(epoch, net, args, mode = 'Vis'):
     model = net.person_id
@@ -121,7 +124,7 @@ def validate(epoch, net, args, mode = 'Vis'):
     else:
         test_mode = [1, 2]
 
-    cmc, mAP, mINP, cmc_att, mAP_att, mINP_att = test(epoch, net, test_mode)
+    cmc_att, mAP_att, mINP_att = test(epoch, net, test_mode)
     # save model
     # if max(mAP, mAP_att) > best_acc:  # not the real best for sysu-mm01
     #     best_acc = max(mAP, mAP_att)
@@ -145,94 +148,15 @@ def validate(epoch, net, args, mode = 'Vis'):
     #     }
     #     torch.save(state, checkpoint_path + suffix + '_epoch_{}.t'.format(epoch))
 
-    print(
-        'POOL:   Rank-1: {:.2%} | Rank-5: {:.2%} | Rank-10: {:.2%}| Rank-20: {:.2%}| mAP: {:.2%}| mINP: {:.2%}'.format(
-            cmc[0], cmc[4], cmc[9], cmc[19], mAP, mINP))
+    # print(
+    #     'POOL:   Rank-1: {:.2%} | Rank-5: {:.2%} | Rank-10: {:.2%}| Rank-20: {:.2%}| mAP: {:.2%}| mINP: {:.2%}'.format(
+    #         cmc[0], cmc[4], cmc[9], cmc[19], mAP, mINP))
     print('FC:   Rank-1: {:.2%} | Rank-5: {:.2%} | Rank-10: {:.2%}| Rank-20: {:.2%}| mAP: {:.2%}| mINP: {:.2%}'.format(
         cmc_att[0], cmc_att[4], cmc_att[9], cmc_att[19], mAP_att, mINP_att))
-    return max(mAP, mAP_att)
+    return mAP_att
 
 
 def eval_sysu(distmat, q_pids, g_pids, q_camids, g_camids, max_rank=20):
-    """Evaluation with sysu metric
-    Key: for each query identity, its gallery images from the same camera view are discarded. "Following the original setting in ite dataset"
-    """
-    num_q, num_g = distmat.shape
-    if num_g < max_rank:
-        max_rank = num_g
-        print("Note: number of gallery samples is quite small, got {}".format(num_g))
-    indices = np.argsort(distmat, axis=1)
-    pred_label = g_pids[indices]
-    matches = (g_pids[indices] == q_pids[:, np.newaxis]).astype(np.int32)
-
-    # compute cmc curve for each query
-    new_all_cmc = []
-    all_cmc = []
-    all_AP = []
-    all_INP = []
-    num_valid_q = 0.  # number of valid query
-    for q_idx in range(num_q):
-        # get query pid and camid
-        q_pid = q_pids[q_idx]
-        q_camid = q_camids[q_idx]
-
-        # remove gallery samples that have the same pid and camid with query
-        order = indices[q_idx]
-        remove = (q_camid == 3) & (g_camids[order] == 2)
-        keep = np.invert(remove)
-
-        # compute cmc curve
-        # the cmc calculation is different from standard protocol
-        # we follow the protocol of the author's released code
-        new_cmc = pred_label[q_idx][keep]
-        new_index = np.unique(new_cmc, return_index=True)[1]
-        new_cmc = [new_cmc[index] for index in sorted(new_index)]
-
-        new_match = (new_cmc == q_pid).astype(np.int32)
-        new_cmc = new_match.cumsum()
-        new_all_cmc.append(new_cmc[:max_rank])
-
-        orig_cmc = matches[q_idx][keep]  # binary vector, positions with value 1 are correct matches
-        if not np.any(orig_cmc):
-            # this condition is true when query identity does not appear in gallery
-            continue
-
-        cmc = orig_cmc.cumsum()
-
-        # compute mINP
-        # refernece Deep Learning for Person Re-identification: A Survey and Outlook
-        pos_idx = np.where(orig_cmc == 1)
-        pos_max_idx = np.max(pos_idx)
-        inp = cmc[pos_max_idx] / (pos_max_idx + 1.0)
-        all_INP.append(inp)
-
-        cmc[cmc > 1] = 1
-
-        all_cmc.append(cmc[:max_rank])
-        num_valid_q += 1.
-
-        # compute average precision
-        # reference: https://en.wikipedia.org/wiki/Evaluation_measures_(information_retrieval)#Average_precision
-        num_rel = orig_cmc.sum()
-        tmp_cmc = orig_cmc.cumsum()
-        tmp_cmc = [x / (i + 1.) for i, x in enumerate(tmp_cmc)]
-        tmp_cmc = np.asarray(tmp_cmc) * orig_cmc
-        AP = tmp_cmc.sum() / num_rel
-        all_AP.append(AP)
-
-    assert num_valid_q > 0, "Error: all query identities do not appear in gallery"
-
-    all_cmc = np.asarray(all_cmc).astype(np.float32)
-    all_cmc = all_cmc.sum(0) / num_valid_q  # standard CMC
-
-    new_all_cmc = np.asarray(new_all_cmc).astype(np.float32)
-    new_all_cmc = new_all_cmc.sum(0) / num_valid_q
-    mAP = np.mean(all_AP)
-    mINP = np.mean(all_INP)
-    return new_all_cmc, mAP, mINP
-
-
-def eval_sysu2(distmat, q_pids, g_pids, q_camids, g_camids, max_rank=20):
     """Evaluation with sysu metric
     Key: for each query identity, its gallery images from the same camera view are discarded. "Following the original setting in ite dataset"
     """

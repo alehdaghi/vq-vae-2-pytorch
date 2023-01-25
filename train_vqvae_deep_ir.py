@@ -16,7 +16,7 @@ import torchvision.transforms as T
 from tqdm import tqdm
 
 from data_loader import SYSUData
-from loss import TripletLoss, TripletLoss_WRT
+from loss import TripletLoss, TripletLoss_WRT, CrossTripletLoss
 from model import ModelAdaptive, ModelAdaptive_Deep, embed_net
 from old_model import embed_net2
 from reid_tools import validate
@@ -27,6 +27,7 @@ import distributed as dist
 from torch.utils.tensorboard import SummaryWriter
 writer = SummaryWriter()
 
+
 invTrans = transforms.Compose([
     transforms.Normalize(mean=[0., 0., 0.], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]),
     transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
@@ -35,14 +36,17 @@ invTrans = transforms.Compose([
 stage_reconstruction = 40
 
 class RandomCropBoxes:
-    def __init__(self, n, size):
+    def __init__(self, n, size, p=0.5):
         self.n = n
         self.size = size
+        self.p = p
 
     def __call__(self, imgs):
-        h, w = self.size, self.size
+        if np.random.rand() > self.p:
+            return imgs
         H, W = imgs.shape[-2:]
         for img in imgs:
+            h, w = np.random.randint(self.size - 10, self.size + 5), np.random.randint(self.size - 10, self.size + 5)
             y, x = np.random.randint(0, H - h, self.n), np.random.randint(0, W - w, self.n)
             for xx,yy in zip(x,y):
                 img[:, yy:yy + h, xx:xx + w] = random.random()
@@ -52,7 +56,7 @@ class RandomCropBoxes:
 aug_transforms = transforms.Compose([
     # T.ColorJitter(brightness=.15, hue=.13),
     T.ElasticTransform(alpha=25.0),
-    RandomCropBoxes(n=15, size=20)
+    RandomCropBoxes(n=10, size=30, p=.5)
 ])
 
 aug_transforms_rec = transforms.Compose([
@@ -63,6 +67,7 @@ aug_transforms_rec = transforms.Compose([
 
 criterion = nn.MSELoss()
 triplet_criterion = TripletLoss_WRT()
+cross_triplet_criterion = CrossTripletLoss()
 latent_loss_weight = 0.25
 
 def random_pair(args):
@@ -129,21 +134,20 @@ def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     w = torch.rand(bs, 3).cuda() + 0.01
     w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
     gray = torch.einsum('b c w h, b c -> b w h', rgb, w).unsqueeze(1).expand(-1, 3, -1, -1)
-    invIndex = np.random.choice(bs, bs // 2, replace=False)
-    gray[invIndex] = 1 - gray[invIndex]
 
-    feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=rgb, xIR=ir, xZ=gray, modal=0,
+    feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=rgb, xIR=ir,  modal=0,
                                                              with_feature=True)
-    featV, featT, featZ = torch.split(feat, bs)
+    featV, featT = torch.split(feat, bs)
+    labelV, labelT = torch.split(labels, bs)
 
     loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-    loss_triplet = triplet_criterion(feat, labels)[0]
+    loss_triplet = cross_triplet_criterion(featV, featV, featV, labelV, labelV, labelV) +\
+                   cross_triplet_criterion(featT, featT, featT, labelT, labelT, labelT)
     Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // bs)
     # var = Feat.var(dim=1)
     # mean = Feat.mean(dim=1)
-    modal_free_loss = criterion(featZ, featV)
     optimizer_reid.zero_grad()
-    loss_Re = loss_id_real + loss_triplet + modal_free_loss
+    loss_Re = loss_id_real + loss_triplet
     loss_Re.backward()
     optimizer_reid.step()
     return loss_Re, actMap
@@ -224,7 +228,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
                 loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-                loss_triplet = triplet_criterion(feat, labels)[0]
+                loss_triplet = cross_triplet_criterion(featZ, featV, featZ, label1, label1, label1) + \
+                               cross_triplet_criterion(featT, featZ, featT, label2, label1, label2)
                 Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
                 # var = Feat.var(dim=1)
                 # mean = Feat.mean(dim=1)
@@ -329,8 +334,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 rgb = aug_rgb[index]
                 ir = aug_ir[index]
                 ir_rec = ir_reconst[index].expand(-1,3,-1,-1)
-                rgb2ir = inter[index] if epoch > stage_reconstruction else img2[index]
-                g = gray[index] if epoch > stage_reconstruction else rgb
+                rgb2ir = inter[index] if epoch >= stage_reconstruction else img2[index]
+                g = gray[index] if epoch >= stage_reconstruction else rgb
                 # mask = upMask[index]
                 # with torch.no_grad():
                 #     out, _ = model(sample)
@@ -438,6 +443,7 @@ def main(args):
 
         # if i == args.start:
         #     validate(0, model, args=args, mode='all')
+        # break
         model.train()
         train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
         if i % 4 == 0:
