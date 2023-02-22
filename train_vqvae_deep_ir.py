@@ -199,7 +199,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
             modal_labels_fake = torch.ones_like(label1).cuda() # inter: 1
 
             if epoch < stage_reconstruction:
-                loss_Re, actMap = train_first_reid(epoch, model, optimizer_reid, aug_rgb, aug_ir, labels)
+                # loss_Re, actMap = train_first_reid(epoch, model, optimizer_reid, aug_rgb, aug_ir, labels)
                 upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
             else :
                 w = torch.rand(bs, 3).cuda() + 0.01
@@ -223,8 +223,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 # model.discriminator.requires_grad_(True)
                 # model.discriminator.train()
 
-                featT, scoreT = model.person_id(xRGB=None, xIR=aug_ir, xZ=None,  modal=1, with_feature=False)
-                featZ, scoreZ = model.person_id(xRGB=None, xIR=aug_ir, xZ=None, modal=1, with_feature=False)
+                featT, scoreT = model.person_id(xRGB=None, xIR=aug_ir, xZ=None,  modal=2, with_feature=False)
+                featZ, scoreZ = model.person_id(xRGB=None, xIR=None, xZ=inter.detach(), modal=3, with_feature=False)
                 # featV, featT, featZ = torch.split(feat, bs)
                 # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
                 # zeros = actMap < (m - 0.1)
