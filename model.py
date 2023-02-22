@@ -357,14 +357,15 @@ class ResidualBlock(nn.Module):
         return x + self.main(x)
 
 class Non_local(nn.Module):
-    def __init__(self, in_channels, reduc_ratio=4):
+    def __init__(self, in_channels_c, in_channels_s, reduc_ratio=4):
         super(Non_local, self).__init__()
 
-        self.in_channels = in_channels
-        self.inter_channels = in_channels//reduc_ratio
+        self.in_channels = in_channels_c
+        self.in_channels_s = in_channels_s
+        self.inter_channels = in_channels_c//reduc_ratio
 
         self.g = nn.Sequential(
-            nn.Conv2d(in_channels=self.in_channels, out_channels=self.inter_channels, kernel_size=1, stride=1,
+            nn.Conv2d(in_channels=self.in_channels_s, out_channels=self.inter_channels, kernel_size=1, stride=1,
                     padding=0),
         )
 
@@ -381,7 +382,7 @@ class Non_local(nn.Module):
         self.theta = nn.Conv2d(in_channels=self.in_channels, out_channels=self.inter_channels,
                              kernel_size=1, stride=1, padding=0)
 
-        self.phi = nn.Conv2d(in_channels=self.in_channels, out_channels=self.inter_channels,
+        self.phi = nn.Conv2d(in_channels=self.in_channels_s, out_channels=self.inter_channels,
                            kernel_size=1, stride=1, padding=0)
 
     def forward(self, c, s):
@@ -417,8 +418,8 @@ class ModelAdaptive_Deep(nn.Module):
         self.person_id = embed_net(class_num, 'off', 'off', arch)
 
         # self.camera_id = Camera_net(camera_num, arch)
-        self.fusion1 = Non_local(256, 1)
-        self.fusion2 = Non_local(256, 1)
+        self.fusion1 = Non_local(256, 1024, 1)
+        self.fusion2 = Non_local(256, 2024, 1)
 
         self.adaptor = VQVAE_Deep() if adaptor is None else adaptor
 

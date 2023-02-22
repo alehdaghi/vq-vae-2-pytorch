@@ -208,30 +208,36 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 invIndex = np.random.choice(bs, bs // 2, replace=False)
                 # gray[invIndex] = 1 - gray[invIndex]
 
+                model.person_id.requires_grad_(True)
+                model.person_id.train()
+                featV, scoreV, feat2dV, actMapV, feat2d_x3V = model.person_id(xRGB=aug_rgb, xIR=None, xZ=None,
+                                                                              modal=1, with_feature=True)
+
                 rgb_b, rgb_t = model.encode_content(gray)
-                rgb_b_f, rgb_t_f = rgb_b, rgb_t#model.fuse(rgb_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
+                rgb_b_f, rgb_t_f = model.fuse(rgb_b, rgb_t, feat2d_x3V , feat2dV)
                 rgb_content, latent_loss_ir = model.quantize_content(rgb_b_f, rgb_t_f)
                 inter = model.decode(rgb_content).expand(-1,3,-1,-1)
 
-                model.person_id.requires_grad_(True)
-                model.person_id.train()
+
+
                 # model.discriminator.requires_grad_(True)
                 # model.discriminator.train()
 
-                feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=aug_rgb, xIR=aug_ir, xZ=inter.detach(),  modal=0, with_feature=True)
-                featV, featT, featZ = torch.split(feat, bs)
+                featT, scoreT = model.person_id(xRGB=None, xIR=aug_ir, xZ=None,  modal=1, with_feature=False)
+                featZ, scoreZ = model.person_id(xRGB=None, xIR=aug_ir, xZ=None, modal=1, with_feature=False)
+                # featV, featT, featZ = torch.split(feat, bs)
                 # m = actMap.view(feat.shape[0], -1).median(dim=1)[0].view(feat.shape[0], 1, 1, 1)
                 # zeros = actMap < (m - 0.1)
                 # ones = actMap > (m + 0.02)
                 # actMap[zeros] = 0
                 # actMap[ones] = 1
-                upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
+                # upMask = F.upsample(actMap, scale_factor=16, mode='bilinear')
 
-                loss_id_real = torch.nn.functional.cross_entropy(score, labels)
+                loss_id_real = torch.nn.functional.cross_entropy(torch.cat([scoreV,scoreT, scoreZ], dim=0), labels)
                 loss_triplet = cross_triplet_criterion(featV, featZ, featV, label1, label1, label1) + \
                                cross_triplet_criterion(featT, featZ, featT, label2, label1, label2) + \
                                cross_triplet_criterion(featZ, featT, featZ, label2, label1, label2)
-                Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
+                # Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
                 # var = Feat.var(dim=1)
                 # mean = Feat.mean(dim=1)
                 modal_free_loss = criterion(featZ, featV)
