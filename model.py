@@ -468,9 +468,9 @@ class ModelAdaptive_Deep(nn.Module):
 
     def fuse(self, cb, ct, sb, st):
         f = self.fusion1(cb, sb.detach())
-        cb = self.resblocks1(f) + f + cb
-        f = self.fusion2(ct, self.conv1(st.detach()))
-        ct = self.resblocks2(f) + f + ct
+        cb = self.resblocks1(f) + f
+        f = self.fusion2(ct, st.detach())
+        ct = self.resblocks2(f) + f
         return cb, ct
 
     def encAndDec(self, img):
