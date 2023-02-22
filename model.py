@@ -419,7 +419,7 @@ class ModelAdaptive_Deep(nn.Module):
 
         # self.camera_id = Camera_net(camera_num, arch)
         self.fusion1 = Non_local(256, 1024, 1)
-        self.fusion2 = Non_local(256, 2024, 1)
+        self.fusion2 = Non_local(256, 2048, 1)
 
         self.adaptor = VQVAE_Deep() if adaptor is None else adaptor
 
