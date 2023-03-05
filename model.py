@@ -446,7 +446,7 @@ class ModelAdaptive_Deep(nn.Module):
         # )
 
         # self.mlp = MLP(self.person_id.pool_dim, get_num_adain_params(self.adaptor), 256, 1, norm='none', activ='relu')
-        self.discriminator = Discriminator()
+        self.discriminator = Discriminator(class_num*2, 2048)
 
     def encode_person(self, rgb):
         feat, score, feat2d, actMap, x3 = self.person_id(xRGB=rgb, xIR=None, modal=1, with_feature=True)
@@ -491,17 +491,18 @@ class ModelAdaptive_Deep(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self):
+    def __init__(self, d_out, d_in=2048):
         super(Discriminator, self).__init__()
         # self.encoder = base_resnet(arch=arch).resnet_part2[2]  # layer4
-        m_net = torchvision.models.mobilenet_v3_small(pretrained=True)
-        self.encoder = m_net.features
+        # m_net = torchvision.models.mobilenet_v3_small(pretrained=True)
+        # self.encoder = m_net.features
 
-        self.discriminator = nn.Linear(576, 1)
-        self.activation = nn.Sigmoid()
+        # self.discriminator = nn.Linear(576, 1)
+        self.discriminator = MLP(d_in, d_out, 512, 2, norm='none', activ='relu')
+        # self.activation = nn.)
 
-    def forward(self, x):
-        feat = self.encoder(x)
-        feat = embed_net.gl_pool(feat, 'off')
+    def forward(self, feat):
+        # feat = self.encoder(x)
+        # feat = embed_net.gl_pool(feat, 'off')
         d = self.discriminator(feat)
-        return self.activation(d)
+        return d
