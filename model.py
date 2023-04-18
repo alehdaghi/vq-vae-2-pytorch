@@ -153,8 +153,8 @@ class embed_net(nn.Module):
         elif modal == 3:
             x = self.z_module(xZ)
 
-        x3 = self.base_resnet[0:3](x)  # layer2 : layer3
-        x4 = self.base_resnet[3:5](x3)
+        x3 = self.base_resnet[0:2](x)  # layer2 : layer3
+        x4 = self.base_resnet[2:](x3)
         # x = self.base_resnet.resnet_part2[1](x)  # layer3
         # x3 = x
         # x = self.base_resnet.resnet_part2[2](x)  # layer4
@@ -488,6 +488,95 @@ class ModelAdaptive_Deep(nn.Module):
 
     def decode(self, content):
         return self.adaptor.decode(content)
+
+class ModelAdaptiveBi_Deep(nn.Module):
+    def __init__(self, class_num=395, adaptor=None, arch='resnet18'):
+        super(ModelAdaptiveBi_Deep, self).__init__()
+        self.person_id = embed_net(class_num, 'off', 'off', arch)
+
+        self.feat_d = 2048 if arch == 'resnet50' else 512
+        # self.camera_id = Camera_net(camera_num, arch)
+        self.fusion1 = Non_local(256, self.feat_d // 2, 1)
+        self.fusion2 = Non_local(256, self.feat_d, 1)
+
+        self.adaptor1 = VQVAE_Deep() if adaptor is None else adaptor
+        self.adaptor2 = VQVAE_Deep() if adaptor is None else adaptor
+
+
+
+        self.style_dim = 256
+
+
+        self.conv1 = spectral_norm(nn.Conv2d(512, self.style_dim, kernel_size=1, stride=2, padding=0))
+        self.conv2 = spectral_norm(
+            nn.ConvTranspose2d(self.style_dim, self.style_dim, kernel_size=4, stride=2, padding=1))
+
+        self.resblocks1 = nn.Sequential(
+            ResidualBlock(self.style_dim, self.style_dim),
+            ResidualBlock(self.style_dim, self.style_dim),
+        )
+        self.resblocks2 = nn.Sequential(
+            ResidualBlock(self.style_dim, self.style_dim),
+            ResidualBlock(self.style_dim, self.style_dim),
+        )
+
+        # self.upsample_t = nn.Sequential(
+        #     nn.ConvTranspose2d(self.person_id.pool_dim, self.person_id.pool_dim, 4, stride=2, padding=1)
+        # )
+
+        # self.mlp = MLP(self.person_id.pool_dim, get_num_adain_params(self.adaptor), 256, 1, norm='none', activ='relu')
+        self.discriminator = Discriminator(class_num*2, self.feat_d)
+
+    def encode_person(self, rgb):
+        feat, score, feat2d, actMap, x3 = self.person_id(xRGB=rgb, xIR=None, modal=1, with_feature=True)
+        return feat, score, feat2d, actMap, x3
+
+    def encode_style(self, rgb):
+        return self.encoder_s(rgb)
+
+    def encode_content_(self, img, adaptor):
+        enc_b, enc_t = adaptor.encode(img)
+        return enc_b, enc_t
+
+    def encode_content_1(self, img):
+        return self.encode_content_(img, self.adaptor1)
+
+    def encode_content_2(self, img):
+        return self.encode_content_(img, self.adaptor2)
+
+    def quantize_content_(self, enc_b, enc_t, adaptor):
+        quant_t, quant_b, diff, _, _ = adaptor.quantize(enc_b, enc_t)
+        upsample_t = adaptor.upsample_t(quant_t)
+        quant = torch.cat([upsample_t, quant_b], 1)
+        return quant, diff
+
+    def quantize_content_1(self, enc_b, enc_t):
+        return self.quantize_content_(enc_b, enc_t, self.adaptor1)
+    def quantize_content_2(self, enc_b, enc_t):
+        return self.quantize_content_(enc_b, enc_t, self.adaptor2)
+
+    def fuse(self, cb, ct, sb, st):
+        f = self.fusion1(cb, sb.detach())
+        cb = self.resblocks1(f) + f
+        f = self.fusion2(ct, st.detach())
+        ct = self.resblocks2(f) + f
+        return cb, ct
+
+    def encAndDec(self, img):
+        enc_b, enc_t = self.encode_content(img)
+        enc_b_f, enc_t_f = enc_b, enc_t  # model.fuse(enc_b, rgb_t, feat2d_x3[bs:] , feat2d[bs:])
+        img_content, _ = self.quantize_content(enc_b_f, enc_t_f)
+        rec = self.decode(img_content).expand(-1, 3, -1, -1)
+        return rec
+
+    def decodeWithStyle(self, content, style):
+        self.fusion(content, style)
+
+    def decodeWithoutStyle(self, content):
+        return self.adaptor.decode(content)
+
+    def decode(self, content):
+        return self.adaptor1.decode(content)
 
 
 class Discriminator(nn.Module):

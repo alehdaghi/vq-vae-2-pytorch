@@ -4,6 +4,7 @@ import numpy as np
 from torch.autograd import Variable
 from torch.utils import data
 from torchvision import transforms
+from scipy.spatial.distance import cdist
 
 from data_loader import TestData, process_sysu
 
@@ -46,6 +47,7 @@ def load_data(args, test_batch=50, data_path='../Datasets/SYSU-MM01/', mode = 'V
     print('  query    | {:5d} | {:8d}'.format(len(np.unique(query_label)), nquery))
     print('  gallery  | {:5d} | {:8d}'.format(len(np.unique(gall_label)), ngall))
 
+dist_type='find_neighbour'
 def test(epoch, net, test_mode = [1, 2]):
     # switch to evaluation mode
     pool_dim = net.person_id.pool_dim
@@ -95,16 +97,12 @@ def test(epoch, net, test_mode = [1, 2]):
     #exit(0)
     start = time.time()
     # compute the similarity
-    # distmat = np.matmul(query_feat, np.transpose(gall_feat))
-    distmat_att = np.matmul(query_feat_att, np.transpose(gall_feat_att))
 
-    # evaluation
-    # if dataset == 'regdb':
-    #     cmc, mAP, mINP      = eval_regdb(-distmat, query_label, gall_label)
-    #     cmc_att, mAP_att, mINP_att  = eval_regdb(-distmat_att, query_label, gall_label)
-    # elif dataset == 'sysu':
+    if (dist_type == 'cosine'):
+        distmat_att = np.matmul(query_feat_att, np.transpose(gall_feat_att))
+    else:
+        distmat_att = -calc_dist(query_feat_att, gall_feat_att)
 
-    # cmc, mAP, mINP = eval_sysu(-distmat, query_label, gall_label, query_cam, gall_cam)
     cmc_att, mAP_att, mINP_att = eval_sysu(-distmat_att, query_label, g_l, query_cam, gall_cam)
     print('Evaluation Time:\t {:.3f}'.format(time.time() - start))
 
@@ -230,3 +228,74 @@ def eval_sysu(distmat, q_pids, g_pids, q_camids, g_camids, max_rank=20):
     mAP = np.mean(all_AP)
     mINP = np.mean(all_INP)
     return id_all_cmc, mAP, mINP
+
+
+def calc_dist(probFea, galFea):
+    k1, k2 = 20, 6
+    lambda_value = 0.3
+    query_num = probFea.shape[0]
+    all_num = query_num + galFea.shape[0]
+    feat = np.append(probFea, galFea, axis=0)
+    feat = feat.astype(np.float16)
+    # print('computing original distance')
+    original_dist = cdist(feat, feat).astype(np.float16)
+    original_dist = np.power(original_dist, 2).astype(np.float16)
+    del feat
+    gallery_num = original_dist.shape[0]
+    original_dist = np.transpose(original_dist / np.max(original_dist, axis=0))
+    V = np.zeros_like(original_dist).astype(np.float16)
+    initial_rank = np.argsort(original_dist).astype(np.int32)
+
+    # print('starting re_ranking')
+    for i in range(all_num):
+        # k-reciprocal neighbors
+        forward_k_neigh_index = initial_rank[i, :k1 + 1]
+        backward_k_neigh_index = initial_rank[forward_k_neigh_index, :k1 + 1]
+        fi = np.where(backward_k_neigh_index == i)[0]
+        k_reciprocal_index = forward_k_neigh_index[fi]
+        k_reciprocal_expansion_index = k_reciprocal_index
+        for j in range(len(k_reciprocal_index)):
+            candidate = k_reciprocal_index[j]
+            candidate_forward_k_neigh_index = initial_rank[candidate, :int(np.around(k1 / 2)) + 1]
+            candidate_backward_k_neigh_index = initial_rank[candidate_forward_k_neigh_index,
+                                               :int(np.around(k1 / 2)) + 1]
+            fi_candidate = np.where(candidate_backward_k_neigh_index == candidate)[0]
+            candidate_k_reciprocal_index = candidate_forward_k_neigh_index[fi_candidate]
+            if len(np.intersect1d(candidate_k_reciprocal_index, k_reciprocal_index)) > 2 / 3 * len(
+                    candidate_k_reciprocal_index):
+                k_reciprocal_expansion_index = np.append(k_reciprocal_expansion_index, candidate_k_reciprocal_index)
+
+        k_reciprocal_expansion_index = np.unique(k_reciprocal_expansion_index)
+        weight = np.exp(-original_dist[i, k_reciprocal_expansion_index])
+        V[i, k_reciprocal_expansion_index] = weight / np.sum(weight)
+    original_dist = original_dist[:query_num, ]
+    if k2 != 1:
+        V_qe = np.zeros_like(V, dtype=np.float16)
+        for i in range(all_num):
+            V_qe[i, :] = np.mean(V[initial_rank[i, :k2], :], axis=0)
+        V = V_qe
+        del V_qe
+    del initial_rank
+    invIndex = []
+    for i in range(gallery_num):
+        invIndex.append(np.where(V[:, i] != 0)[0])
+
+    jaccard_dist = np.zeros_like(original_dist, dtype=np.float16)
+
+    for i in range(query_num):
+        temp_min = np.zeros(shape=[1, gallery_num], dtype=np.float16)
+        indNonZero = np.where(V[i, :] != 0)[0]
+        indImages = []
+        indImages = [invIndex[ind] for ind in indNonZero]
+        for j in range(len(indNonZero)):
+            temp_min[0, indImages[j]] = temp_min[0, indImages[j]] + np.minimum(V[i, indNonZero[j]],
+                                                                               V[indImages[j], indNonZero[j]])
+        jaccard_dist[i] = 1 - temp_min / (2 - temp_min)
+
+    final_dist = jaccard_dist * (1 - lambda_value) + original_dist * lambda_value
+    del original_dist
+    del V
+    del jaccard_dist
+    final_dist = final_dist[:query_num, query_num:]
+    return final_dist
+
