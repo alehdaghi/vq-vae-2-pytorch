@@ -343,7 +343,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
                 )
             )
 
-            if i % 300 == 0:
+            if i % 100 == 0:
                 # model.eval()
                 index = np.random.choice(np.arange(bs), min(bs, sample_size), replace=False)
 
