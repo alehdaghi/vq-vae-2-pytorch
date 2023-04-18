@@ -391,8 +391,8 @@ def main(args):
     dataset = SYSUData(args.path, transform=transform)
     loader_batch = args.batch_size * args.num_pos
     vq_vae = VQVAE(out_channel=1).to(device)
-    model = ModelAdaptiveBi_Deep(dataset.num_class, vq_vae, arch='resnet18').to(device)
-    # model.person_id = embed_net2(dataset.num_class, arch='resnet18').to(device)
+    model = ModelAdaptiveBi_Deep(dataset.num_class, vq_vae, arch='resnet50').to(device)
+    model.person_id = embed_net2(dataset.num_class, arch='resnet50').to(device)
     # checkpoint = torch.load(
     #     '/home/mahdi/PycharmProjects/vq-vae-2-pytorch/sysu_att_p8_n4_lr_0.03_seed_0_gray_randChanU2_best.t')
     # model.person_id.load_state_dict(checkpoint['net'])
