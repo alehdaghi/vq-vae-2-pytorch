@@ -169,9 +169,9 @@ def train_cycle_rec(epoch, model, gray, ir, feat2d_x3V, feat2dV, feat2d_x3I,  fe
     fake_ir_content, fake_ir_loss_ir = model.quantize_content_2(fake_ir_b_f, fake_ir_t_f)
     gray2Ir2Gray = model.decode(fake_ir_content).expand(-1, 3, -1, -1)
     
-    fake_rgb_b, fake_rgb_t = model.encode_content_2(ir2Gray)
+    fake_rgb_b, fake_rgb_t = model.encode_content_1(ir2Gray)
     fake_rgb_b_f, fake_rgb_t_f = model.fuse(fake_rgb_b, fake_rgb_t, feat2d_x3I, feat2dI)
-    fake_rgb_content, fake_rgb_loss_rgb = model.quantize_content_2(fake_rgb_b_f, fake_rgb_t_f)
+    fake_rgb_content, fake_rgb_loss_rgb = model.quantize_content_1(fake_rgb_b_f, fake_rgb_t_f)
     ir2Gray2Ir = model.decode(fake_rgb_content).expand(-1, 3, -1, -1)
 
     cycle_loss = criterion(ir2Gray2Ir, ir.mean(1,True)) + criterion(gray2Ir2Gray, gray.mean(1,True))
@@ -289,7 +289,10 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
         pos = (centerZ_v - centerZ_i).pow(2).mean(dim=1)
         neg = (centerV - centerI).pow(2).mean(dim=-1)
-        loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.01) #criterion(featG, feat[bs:].detach())
+        loss_feat_ir = F.margin_ranking_loss(pos, neg, -1 * torch.ones_like(pos), margin=0.01) + \
+                       cross_triplet_criterion(featZ_v, featZ_i, featZ_v, label1, label2, label1) + \
+                       cross_triplet_criterion(featZ_i, featZ_v, featZ_i, label2, label1, label2)
+        #criterion(featG, feat[bs:].detach())
         # loss_feat_ir = criterion(centerG, (centerV+centerT)/2)
         loss_Re_Ir = loss_id_real_ir + loss_feat_ir
 
