@@ -242,7 +242,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         featZ_v, scoreZ_v = model.person_id(xRGB=None, xIR=None, xZ=inter_v.detach(), modal=3, with_feature=False)
         featZ_i, scoreZ_i = model.person_id(xRGB=None, xIR=None, xZ=inter_i.detach(), modal=3, with_feature=False)
 
-        loss_id_real = torch.nn.functional.cross_entropy(torch.cat([score, scoreZ_v, scoreZ_i], dim=0), labels)
+        loss_id_real = F.cross_entropy(torch.cat([score, scoreZ_v, scoreZ_i], dim=0), labels)
         loss_triplet = cross_triplet_criterion(featV, featV, featV, label1, label1, label1) + \
                        cross_triplet_criterion(featI, featI, featI, label2, label2, label2)
         # Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
@@ -252,7 +252,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
 
         predict_true_modals = (torch.cat((model.discriminator(feat.detach()), model.discriminator(torch.cat((featZ_v, featZ_i),0).detach())), 0))
-        disc_loss_true = torch.nn.functional.cross_entropy(predict_true_modals, id_modal_labels_true)
+        disc_loss_true = F.cross_entropy(predict_true_modals, id_modal_labels_true)
 
 
         loss_fake = modal_free_loss
@@ -302,7 +302,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
         #                   criterion(gray_content_other, rgb_content_itself)
 
-        loss_G = loss_G + 0.1 * (loss_Re_Ir + disc_loss_fake)
+        loss_G = loss_G + 0.5 * (loss_Re_Ir + disc_loss_fake)
 
         optimizer.zero_grad()
         loss_G.backward()
