@@ -243,8 +243,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         featZ_i, scoreZ_i = model.person_id(xRGB=None, xIR=None, xZ=inter_i.detach(), modal=3, with_feature=False)
 
         loss_id_real = torch.nn.functional.cross_entropy(torch.cat([score, scoreZ_v, scoreZ_i], dim=0), labels)
-        loss_triplet = cross_triplet_criterion(featV, featI, featV, label1, label2, label1) + \
-                       cross_triplet_criterion(featI, featV, featI, label2, label1, label2)
+        loss_triplet = cross_triplet_criterion(featV, featV, featV, label1, label1, label1) + \
+                       cross_triplet_criterion(featI, featI, featI, label2, label2, label2)
         # Feat = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=feat.shape[0] // img1.shape[0])
         # var = Feat.var(dim=1)
         # mean = Feat.mean(dim=1)
@@ -300,16 +300,12 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         #                   criterion(gray_content_other, rgb_content_itself)
 
         loss_G = loss_G + 0.1 * (loss_Re_Ir + disc_loss_fake)
-          # + loss_id_fake + feat_loss + loss_kl_fake
-
 
         optimizer.zero_grad()
         loss_G.backward()
         if scheduler is not None:
             scheduler.step()
         optimizer.step()
-
-
 
         part_mse_sum = cycle_loss.item() * img1.shape[0]
         part_mse_n = img1.shape[0]
