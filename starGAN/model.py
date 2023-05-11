@@ -11,6 +11,7 @@ Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
 import copy
 import math
 
+import numpy
 from munch import Munch
 import numpy as np
 import torch
@@ -144,7 +145,7 @@ class Generator(nn.Module):
         self.to_rgb = nn.Sequential(
             nn.InstanceNorm2d(dim_in, affine=True),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(dim_in, 3, 1, 1, 0))
+            nn.Conv2d(dim_in, 1, 1, 1, 0))
 
         # down/up-sampling blocks
         repeat_num = int(np.log2(img_size)) - 4
@@ -214,7 +215,7 @@ class MappingNetwork(nn.Module):
         for layer in self.unshared:
             out += [layer(h)]
         out = torch.stack(out, dim=1)  # (batch, num_domains, style_dim)
-        idx = torch.LongTensor(range(y.size(0))).to(y.device)
+        idx = torch.LongTensor(range(z.size(0))).to(z.device)
         s = out[idx, y]  # (batch, style_dim)
         return s
 
@@ -277,7 +278,7 @@ class Discriminator(nn.Module):
         out = self.main(x)
         out = F.adaptive_avg_pool2d(out, 1)
         out = out.view(out.size(0), -1)  # (batch, num_domains)
-        idx = torch.LongTensor(range(y.size(0))).to(y.device)
+        idx = torch.LongTensor(range(x.size(0))).to(x.device)
         out = out[idx, y]  # (batch)
         return out
 
@@ -313,8 +314,9 @@ class ModelStarGAN(nn.Module):
         self.person_id = personEmb
 
         self.feat_d = 2048
-        self.adaptor1 = Generator(256//2, self.feat_d) if adaptor is None else adaptor
-        self.adaptor2 = Generator(256//2, self.feat_d) if adaptor is None else adaptor
+        self.mapping = MappingNetwork(self.feat_d, 512, 2)
+        self.adaptor1 = Generator(256//2, 512) if adaptor is None else adaptor
+        self.adaptor2 = Generator(256//2, 512) if adaptor is None else adaptor
 
 
         # self.upsample_t = nn.Sequential(
@@ -336,8 +338,12 @@ class ModelStarGAN(nn.Module):
         return enc_b, enc_t
 
     def gen_1(self, img, s):
+        y = numpy.zeros(s.shape[0])
+        s = self.mapping(s,y)
         return self.adaptor1(img, s)
 
     def gen_2(self, img, s):
+        y = numpy.ones(s.shape[0])
+        s = self.mapping(s, y)
         return self.adaptor2(img, s)
 

@@ -149,14 +149,15 @@ def adv_loss(logits, target):
 def generateInters(model, gray, ir, featV, featI):
     gray2Ir = model.gen_1(gray, featI)
     ir2Gray = model.gen_2(ir, featV)
-    return gray2Ir, ir2Gray
+    return gray2Ir.expand(-1,3,-1,-1), ir2Gray.expand(-1,3,-1,-1)
 
 
 def train_d(epoch, model, gray, ir, gray2Ir, ir2Gray):
     bs = ir.size(0)
-    y_trg = torch.ones(2*bs).to(ir.device)
+    y_trg = torch.ones(2*bs, dtype=torch.int).numpy()
     y_trg[bs:] = 0
     x_real = torch.cat((gray, ir),0)
+    x_real.requires_grad_()
     out = model.discriminator(x_real, y_trg)
     disc_loss_real = adv_loss(out, 1)
     loss_reg = r1_reg(out, x_real)
@@ -197,9 +198,9 @@ def train_cycle_rec(epoch, model, gray, ir, gray2Ir, ir2Gray,  featV, featI, lab
                    # cross_triplet_criterion(featZ_i, featZ_v, featZ_i, label2, label1, label2)
 
     loss_Re_Ir = loss_id_real_ir + loss_feat_ir
-    y_trg = torch.ones_like(labels)
+    y_trg = np.ones(labels.shape[0])
     y_trg[bs:] = 0
-    out = model.discriminator(torch.cat((fake_featV, fake_featI), 0), )
+    out = model.discriminator(torch.cat((gray2Ir, ir2Gray), 0), y_trg)
     disc_loss_fake = adv_loss(out, 1)
 
     # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
@@ -207,7 +208,7 @@ def train_cycle_rec(epoch, model, gray, ir, gray2Ir, ir2Gray,  featV, featI, lab
 
     loss_G = cycle_loss + 0.5 * (loss_Re_Ir + disc_loss_fake)
 
-    return loss_G, Munch(cycle_loss=cycle_loss,loss_id_real_ir=loss_id_real_ir, loss_feat_ir=loss_feat_ir)\
+    return loss_G, Munch(cycle_loss=cycle_loss,loss_id_real_ir=loss_id_real_ir, loss_feat_ir=loss_feat_ir, disc_loss_fake=disc_loss_fake)\
         , Munch(inter_v=gray2Ir, inter_i=ir2Gray, v_reconst=gray2Ir2Gray, ir_reconst=ir2Gray2Ir)
 
 
@@ -283,7 +284,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid, op
         model.person_id.eval()
         #cycle
         loss_G, losses, fakes = train_cycle_rec(epoch, model, gray, ir, gray2Ir, ir2Gray, featV.detach(), featI.detach(), torch.cat((label1, label2), 0), args=args)
-        (inter_v, inter_i, v_reconst, ir_reconst) = fakes
+        (inter_v, inter_i, v_reconst, ir_reconst) = fakes.values()
         loss_Re_Ir = losses.loss_id_real_ir + losses.loss_feat_ir
         optimizer.zero_grad()
         loss_G.backward()
@@ -340,7 +341,7 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid, op
 
                 utils.save_image(
                     invTrans(torch.cat([rgb, g, v_rec, rgb2ir, ir, ir_rec, ir2gray], 0)),
-                    f"sample-bi/ir50_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
+                    f"sample-bi2/ir50_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                     nrow=len(rgb),
                     # normalize=True,
                     range=(-1, 1),
@@ -402,13 +403,18 @@ def main(args):
         else:
             print('==> no checkpoint found at {}'.format(args.resume))
 
-    ignored_params = list(map(id, model.person_id.parameters()))
-    ids = set(map(id, model.parameters()))
-    params = filter(lambda p: id(p) in ids, model.parameters())
-    base_params = filter(lambda p: id(p) not in ignored_params, params)
+    # ignored_params = list(map(id, model.person_id.parameters())) +
+    # ids = set(map(id, model.parameters()))
+    # params = filter(lambda p: id(p) in ids, model.parameters())
+    # base_params = filter(lambda p: id(p) not in ignored_params, params)
 
 
-    optimizer = optim.Adam(base_params , lr=args.lr_G)
+    optimizer = optim.Adam([
+        {'params': model.adaptor1.parameters(), 'lr': args.lr_G},
+        {'params': model.adaptor2.parameters(), 'lr': args.lr_G},
+        {'params': model.mapping.parameters(), 'lr': args.lr_G},
+
+    ])
 
     ignored_params_reid = list(map(id, model.person_id.bottleneck.parameters())) \
                           + list(map(id, model.person_id.classifier.parameters()))
@@ -438,6 +444,9 @@ def main(args):
     print_network(model.person_id, "person")
     print_network(model.discriminator, "dis")
     print_network(model.adaptor1, "gen")
+    print_network(model.mapping, "mapping")
+    print_network(model, "all")
+
     for i in range(args.start, args.epoch):
         sampler = dataset.samplize(args.batch_size, args.num_pos)
         loader = DataLoader(
@@ -455,13 +464,13 @@ def main(args):
                     "epoch": best_i,
                     "net": model.state_dict()
                 }
-                torch.save(obj, f"checkpoint-bi/vqvae_ir50Z_best.pt")
+                torch.save(obj, f"checkpoint-bi2/vqvae_ir50Z_best.pt")
             print('best mAP: {:.2%}| epoch: {}'.format(best_mAP, best_i))
 
         model.person_id.train()
-        torch.save(model.state_dict(), f"checkpoint-bi/vqvae_ir50Z_last.pt")
+        torch.save(model.state_dict(), f"checkpoint-bi2/vqvae_ir50Z_last.pt")
         if i % 10 == 0 and dist.is_primary():
-            torch.save(model.state_dict(), f"checkpoint-bi/vqvae_ir50Z_{str(i + 1).zfill(3)}.pt")
+            torch.save(model.state_dict(), f"checkpoint-bi2/vqvae_ir50Z_{str(i + 1).zfill(3)}.pt")
 
 
 
