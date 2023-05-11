@@ -256,7 +256,7 @@ class StyleEncoder(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, img_size=256, num_domains=2, max_conv_dim=512):
+    def __init__(self, img_size=256, num_domains=2, max_conv_dim=256):
         super().__init__()
         dim_in = 2**14 // img_size
         blocks = []

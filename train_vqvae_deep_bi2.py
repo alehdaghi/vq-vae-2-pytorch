@@ -162,8 +162,10 @@ def train_d(epoch, model, gray, ir, gray2Ir, ir2Gray):
     disc_loss_real = adv_loss(out, 1)
     loss_reg = r1_reg(out, x_real)
 
-    out = model.discriminator(torch.cat((gray2Ir, ir2Gray), 0), 1-y_trg)
-    disc_loss_fake = adv_loss(out, 0)
+    out1 = model.discriminator(torch.cat((gray2Ir, ir2Gray), 0), 1-y_trg)
+    disc_loss_fake = adv_loss(out1, 0)
+    if disc_loss_fake.item() > 1000:
+        print( disc_loss_real , disc_loss_fake , loss_reg)
     loss = disc_loss_real + disc_loss_fake + loss_reg
     return loss
 
@@ -202,6 +204,8 @@ def train_cycle_rec(epoch, model, gray, ir, gray2Ir, ir2Gray,  featV, featI, lab
     y_trg[bs:] = 0
     out = model.discriminator(torch.cat((gray2Ir, ir2Gray), 0), y_trg)
     disc_loss_fake = adv_loss(out, 1)
+    if disc_loss_fake.item() > 1000:
+        print(disc_loss_fake)
 
     # recon_loss_feat = criterion(gray_content_itself, rgb_content_itself) +\
     #                   criterion(gray_content_other, rgb_content_itself)
@@ -416,6 +420,10 @@ def main(args):
 
     ])
 
+    optimizer_disc = optim.Adam([
+        {'params': model.discriminator.parameters(), 'lr': args.lr_G}
+    ])
+
     ignored_params_reid = list(map(id, model.person_id.bottleneck.parameters())) \
                           + list(map(id, model.person_id.classifier.parameters()))
 
@@ -427,9 +435,7 @@ def main(args):
         {'params': model.person_id.classifier.parameters(), 'lr': args.lr_F},
     ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
-    optimizer_disc = optim.SGD([
-        {'params': model.discriminator.parameters(), 'lr': args.lr_F}
-    ], weight_decay=5e-4, momentum=0.9, nesterov=True)
+
 
     scheduler = None
     if args.sched == "cycle":
