@@ -137,28 +137,86 @@ def load_model(model, model_path):
     else:
         print('==> no checkpoint found at {}'.format(args.resume))
 
+def pick_best(detections, treshold):
+    bboxes, classes, confidences = detections
+    best = np.argwhere(confidences > treshold).squeeze(axis=1)
+
+    return [pred[best] for pred in detections]
+
+
+def draw_patches(img, bboxes, labels, scores, order="ltrb", label_map={}):
+
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    # Suppose bboxes in fractional coordinate:
+    # cx, cy, w, h
+    # img = img.numpy()
+    img = np.array(img)
+    labels = np.array(labels)
+    if bboxes is torch.Tensor:
+        bboxes = bboxes.numpy()
+
+    if label_map:
+        labels = [label_map.get(l) for l in labels]
+
+    if order == "ltrb":
+        xmin, ymin, xmax, ymax = bboxes[:, 0],  bboxes[:, 1],  bboxes[:, 2],  bboxes[:, 3]
+        cx, cy, w, h = (xmin + xmax)/2, (ymin + ymax)/2, xmax - xmin, ymax - ymin
+    else:
+        cx, cy, w, h = bboxes[:, 0],  bboxes[:, 1],  bboxes[:, 2],  bboxes[:, 3]
+
+    htot, wtot,_ = img.shape
+    # cx *= wtot
+    # cy *= htot
+    # w *= wtot
+    # h *= htot
+
+    bboxes = zip(cx, cy, w, h)
+
+    plt.imshow(img)
+    ax = plt.gca()
+    for (cx, cy, w, h), label, score in zip(bboxes, labels, scores):
+        if label == "background": continue
+        ax.add_patch(patches.Rectangle((cx-0.5*w, cy-0.5*h),
+                                        w, h, fill=False, color="r"))
+        bbox_props = dict(boxstyle="round", fc="y", ec="0.5", alpha=0.3)
+        ax.text(cx-0.5*w, cy-0.5*h, f'{label}:{score:.2f}', ha="center", va="center", size=15, bbox=bbox_props)
+    plt.show()
+
 @torch.no_grad()
 def testVis(imgPath, model, cats):
     model.eval()
-    input = trans(Image.open(imgPath))
+    img = Image.open(imgPath)
+    input = trans(img)
     input = input.unsqueeze(0).cuda()
-    outputs = model(input)
-    imgCV = cv2.imread(imgPath)
-    for i in range(len(outputs[0]['boxes'])):
-        item = outputs[0]
-        s = item['scores'][i]
-        if s < 0.5:
-            continue
-        m = item['masks'][i].expand(3, -1, -1).permute(1, 2, 0).cpu().numpy()
-        l = item['labels'][i].item()
-        b = item['boxes'][i]
-        x, y, w, h = b.cpu().numpy().astype(np.int)
-        # imgCV = (imgCV + (255 *  m).astype(np.uint8))
-        cv2.rectangle(imgCV, (x, y), (w, h), (255, 0, 0), 2)
-        label = cats[l+1]['name']
-        cv2.putText(imgCV, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36, 255, 12), 2)
-    cv2.imshow("a", imgCV)
-    cv2.waitKey()
+    results = model(input)
+    detections = (results[0]["boxes"].cpu().numpy(),
+                  results[0]["labels"].cpu().numpy(),
+                  results[0]["scores"].cpu().numpy())
+    best_results = pick_best(detections, treshold=0.2)
+    d = {}
+    for k, v in cats.items():
+        d[k - 1] = v['name']
+    bboxes, labels, scores = best_results
+    print(best_results)
+    draw_patches(img, bboxes, labels, scores, label_map=d)
+
+    # imgCV = cv2.imread(imgPath)
+    # for i in range(len(outputs[0]['boxes'])):
+    #     item = outputs[0]
+    #     s = item['scores'][i]
+    #     if s < 0.5:
+    #         continue
+    #     m = item['masks'][i].expand(3, -1, -1).permute(1, 2, 0).cpu().numpy()
+    #     l = item['labels'][i].item()
+    #     b = item['boxes'][i]
+    #     x, y, w, h = b.cpu().numpy().astype(np.int)
+    #     # imgCV = (imgCV + (255 *  m).astype(np.uint8))
+    #     cv2.rectangle(imgCV, (x, y), (w, h), (255, 0, 0), 2)
+    #     label = cats[l+1]['name']
+    #     cv2.putText(imgCV, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36, 255, 12), 2)
+    # cv2.imshow("a", imgCV)
+    # cv2.waitKey()
 
 def main(args):
     print('main')
@@ -170,11 +228,11 @@ def main(args):
         load_model(model, args.resume)
 
     loader, test_loader = build_loaders(args)
+    if args.vis:
+        testVis("/media/mahdi/2e197b57-e3e6-4185-8d1b-5fbb1c3b8b55/datasets/modanet/images/0736759.jpg", model,
+                loader.dataset.coco.cats)
 
-    # testVis("/home/mahdi/PycharmProjects/Datasets/SYSU-MM01/cam5/0015/0001.jpg", model,
-    #         loader.dataset.coco.cats)
-    #
-    # return
+        return
     # loader, test_loader = build_loaders(args, '/media/mahdi/2e197b57-e3e6-4185-8d1b-5fbb1c3b8b55/datasets/modanet/')
 
     if args.distributed:
@@ -209,6 +267,7 @@ if __name__ == "__main__":
                         help='path to modanet')
     parser.add_argument('--workers', default=0, type=int, metavar='N',
                         help='number of data loading workers (default: 4)')
+    parser.add_argument('--vis', action='store_true', help='show test boxes')
 
     args = parser.parse_args()
     torch.multiprocessing.set_sharing_strategy('file_system')

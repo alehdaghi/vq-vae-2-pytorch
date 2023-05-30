@@ -150,6 +150,7 @@ def testVis(imgPath, model, cats):
         x, y, w, h = b.cpu().numpy().astype(np.int)
         # imgCV = (imgCV + (255 *  m).astype(np.uint8))
         cv2.rectangle(imgCV, (x, y), (w, h), (255, 0, 0), 2)
+        imgCV = cv2.addWeighted(imgCV, 0.8, m, 0.2, 0)
         label = cats[l+1]['name']
         cv2.putText(imgCV, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36, 255, 12), 2)
     cv2.imshow("a", imgCV)
@@ -164,10 +165,10 @@ def main(args):
         load_model(model, args.resume)
 
     loader, test_loader = build_loaders(args)
-    # testVis("/home/mahdi/PycharmProjects/Datasets/SYSU-MM01/cam5/0015/0001.jpg", model,
-    #         loader.dataset.coco.cats)
-    #
-    # return
+    testVis("/home/mahdi/PycharmProjects/Datasets/SYSU-MM01/cam5/0015/0001.jpg", model,
+            loader.dataset.coco.cats)
+
+    return
     # loader, test_loader = build_loaders(args, '/media/mahdi/2e197b57-e3e6-4185-8d1b-5fbb1c3b8b55/datasets/modanet/')
 
     if args.distributed:
