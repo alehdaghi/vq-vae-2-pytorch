@@ -240,8 +240,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         model.discriminator.requires_grad_(True)
         model.discriminator.train()
 
-        featZ_v, scoreZ_v = model.person_id(xRGB=None, xIR=None, xZ=inter_v.detach(), modal=3, with_feature=False)
-        featZ_i, scoreZ_i = model.person_id(xRGB=None, xIR=None, xZ=inter_i.detach(), modal=3, with_feature=False)
+        featZ_v, scoreZ_v = model.person_id(xRGB=None, xIR=inter_v.detach(), xZ=None, modal=2, with_feature=False)
+        featZ_i, scoreZ_i = model.person_id(xRGB=inter_i.detach(), xIR=None, xZ=None, modal=1, with_feature=False)
 
         loss_id_real = F.cross_entropy(torch.cat([score, scoreZ_v, scoreZ_i], dim=0), labels)
         loss_triplet = cross_triplet_criterion(featV, featV, featV, label1, label1, label1) + \
