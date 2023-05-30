@@ -96,6 +96,43 @@ class ResBlock(nn.Module):
         return out
 
 
+class AdaIN(nn.Module):
+    def __init__(self, style_dim, num_features):
+        super().__init__()
+        self.norm = nn.InstanceNorm2d(num_features, affine=False)
+        self.fc = nn.Linear(style_dim, num_features*2)
+
+    def forward(self, x, s):
+        h = self.fc(s)
+        h = h.view(h.size(0), h.size(1), 1, 1)
+        gamma, beta = torch.chunk(h, chunks=2, dim=1)
+        return (1 + gamma) * self.norm(x) + beta
+
+
+class AdainResBlk(nn.Module):
+    def __init__(self, in_channel, channel, style_dim):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channel, channel, 3, padding=1)
+        self.conv2 = nn.Conv2d(channel, in_channel, 1)
+        self.norm1 = AdaIN(style_dim, in_channel)
+        self.norm2 = AdaIN(style_dim, channel)
+
+        self.conv = nn.Sequential(
+            nn.ReLU(),
+            nn.Conv2d(in_channel, channel, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channel, in_channel, 1),
+        )
+
+    def forward(self, input, s):
+        out = self.norm1(input, s)
+        out = self.conv1(F.relu_(out))
+        out = self.norm2(out, s)
+        out = self.conv2(F.relu_(out))
+        out += input
+
+        return out
+
 class Encoder(nn.Module):
     def __init__(self, in_channel, channel, n_res_block, n_res_channel, stride):
         super().__init__()
@@ -139,19 +176,20 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(
-            self, in_channel, out_channel, channel, n_res_block, n_res_channel, stride
+            self, in_channel, out_channel, channel, style_dim , n_res_block, n_res_channel, stride
     ):
         super().__init__()
-
-        blocks = [  # AdaptiveInstanceNorm2d(in_channel),
-            nn.Conv2d(in_channel, channel, 3, padding=1)
-        ]
-
+        self.style = True if style_dim > 1 else False
+        blocks = []
+        self.conv1 = nn.Conv2d(in_channel, channel, 3, padding=1)
         for i in range(n_res_block):
             # blocks.append(AdaptiveInstanceNorm2d(channel))
-            blocks.append(ResBlock(channel, n_res_channel))
+            if style_dim <= 0:
+                blocks.append(ResBlock(channel, n_res_channel))
+            else:
+                blocks.append(AdainResBlk(channel, n_res_channel, style_dim))
 
-        blocks.append(nn.ReLU(inplace=True))
+        self.relu = nn.ReLU(inplace=True)
         # blocks.append(AdaptiveInstanceNorm2d(channel))
 
         def up4(channel):
@@ -166,21 +204,31 @@ class Decoder(nn.Module):
         def up2(channel):
             return [nn.ConvTranspose2d(channel, out_channel, 4, stride=2, padding=1)]
 
+        up_sample=[]
         if stride == 8:
-            blocks.extend(up4(channel))
-            blocks.extend(up4(out_channel))
+            up_sample.extend(up4(channel))
+            up_sample.extend(up4(out_channel))
         elif stride == 6:
-                blocks.extend(up4(channel))
-                blocks.extend(up2(out_channel))
+                up_sample.extend(up4(channel))
+                up_sample.extend(up2(out_channel))
         elif stride == 4:
-            blocks.extend(up4(channel))
+            up_sample.extend(up4(channel))
         elif stride == 2:
-            blocks.extend(up2(channel))
-
+            up_sample.extend(up2(channel))
+        self.up_sample = nn.Sequential(*up_sample)
         self.blocks = nn.Sequential(*blocks)
 
-    def forward(self, input):
-        return self.blocks(input)
+    def forward(self, input, s = None):
+        out = self.conv1(input)
+        if not self.style:
+            out = self.blocks(out)
+        else:
+            for adainBlk in self.blocks:
+                out = adainBlk(out, s)
+        out = self.up_sample(self.relu(out))
+        return out
+
+
 
 
 class VQVAE_Deep(nn.Module):
@@ -193,7 +241,8 @@ class VQVAE_Deep(nn.Module):
             embed_dim=256,
             n_embed=512,
             decay=0.99,
-            out_channel=3
+            out_channel=3,
+            style_dim = 2048
     ):
         super().__init__()
 
@@ -202,7 +251,7 @@ class VQVAE_Deep(nn.Module):
         self.quantize_conv_t = nn.Conv2d(channel, embed_dim, 1)
         self.quantize_t = Quantize(embed_dim, n_embed)
         self.dec_t = Decoder(
-            embed_dim, embed_dim, channel, n_res_block, n_res_channel, stride=2
+            embed_dim, embed_dim, channel, -1, n_res_block, n_res_channel, stride=2
         )
         self.quantize_conv_b = nn.Conv2d(embed_dim + channel, embed_dim, 1)
         self.quantize_b = Quantize(embed_dim, n_embed)
@@ -214,6 +263,7 @@ class VQVAE_Deep(nn.Module):
             embed_dim + embed_dim,
             out_channel,
             channel,
+            style_dim,
             n_res_block,
             n_res_channel,
             stride=6,
@@ -256,8 +306,8 @@ class VQVAE_Deep(nn.Module):
     #     dec2 = self.dec_ir(quant.detach()).expand(-1, 3, -1, -1)
     #     return dec, dec2
 
-    def decode(self, quant):
-        return self.dec(quant)
+    def decode(self, quant, style):
+        return self.dec(quant, style)
 
     def decode_code(self, code_t, code_b):
         quant_t = self.quantize_t.embed_code(code_t)

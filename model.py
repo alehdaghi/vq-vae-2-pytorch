@@ -6,7 +6,7 @@ from torch.nn import init
 from torch.nn import functional as F
 import copy
 from torch.nn.utils import spectral_norm
-
+from starGAN.model import Generator
 
 from vqvae import VQVAE, Encoder
 from vqvae_deep import VQVAE_Deep
@@ -575,8 +575,8 @@ class ModelAdaptiveBi_Deep(nn.Module):
     def decodeWithoutStyle(self, content):
         return self.adaptor.decode(content)
 
-    def decode(self, content):
-        return self.adaptor1.decode(content)
+    def decode(self, content, style):
+        return self.adaptor1.decode(content, style)
 
 
 class Discriminator(nn.Module):

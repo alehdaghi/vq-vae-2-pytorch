@@ -153,26 +153,26 @@ def train_first_reid(epoch, model, optimizer_reid, rgb, ir, labels):
     return loss_Re, actMap
 
 
-def train_cycle_rec(epoch, model, gray, ir, feat2d_x3V, feat2dV, feat2d_x3I,  feat2dI):
+def train_cycle_rec(epoch, model, gray, ir, feat2d_x3V, feat2dV, feat2d_x3I,  feat2dI, featV=None, featI=None):
     rgb_b, rgb_t = model.encode_content_1(gray)
-    rgb_b_f, rgb_t_f = model.fuse(rgb_b, rgb_t, feat2d_x3I, feat2dI)
-    rgb_content, latent_loss_ir = model.quantize_content_1(rgb_b_f, rgb_t_f)
-    gray2Ir = model.decode(rgb_content).expand(-1, 3, -1, -1)
+    # rgb_b_f, rgb_t_f = model.fuse(rgb_b, rgb_t, feat2d_x3I, feat2dI)
+    rgb_content, latent_loss_ir = model.quantize_content_1(rgb_b, rgb_t)
+    gray2Ir = model.decode(rgb_content, featI).expand(-1, 3, -1, -1)
 
     ir_b, ir_t = model.encode_content_2(ir)
-    ir_b_f, ir_t_f = model.fuse(ir_b, ir_t, feat2d_x3V, feat2dV)
-    ir_content, ir_loss_ir = model.quantize_content_2(ir_b_f, ir_t_f)
-    ir2Gray = model.decode(ir_content).expand(-1, 3, -1, -1)
+    # ir_b_f, ir_t_f = model.fuse(ir_b, ir_t, feat2d_x3V, feat2dV)
+    ir_content, ir_loss_ir = model.quantize_content_2(ir_b, ir_t)
+    ir2Gray = model.decode(ir_content, featV).expand(-1, 3, -1, -1)
 
     fake_ir_b, fake_ir_t = model.encode_content_2(gray2Ir)
-    fake_ir_b_f, fake_ir_t_f = model.fuse(fake_ir_b, fake_ir_t, feat2d_x3V, feat2dV)
-    fake_ir_content, fake_ir_loss_ir = model.quantize_content_2(fake_ir_b_f, fake_ir_t_f)
-    gray2Ir2Gray = model.decode(fake_ir_content).expand(-1, 3, -1, -1)
+    # fake_ir_b_f, fake_ir_t_f = model.fuse(fake_ir_b, fake_ir_t, feat2d_x3V, feat2dV)
+    fake_ir_content, fake_ir_loss_ir = model.quantize_content_2(fake_ir_b, fake_ir_t)
+    gray2Ir2Gray = model.decode(fake_ir_content, featV).expand(-1, 3, -1, -1)
     
     fake_rgb_b, fake_rgb_t = model.encode_content_1(ir2Gray)
-    fake_rgb_b_f, fake_rgb_t_f = model.fuse(fake_rgb_b, fake_rgb_t, feat2d_x3I, feat2dI)
-    fake_rgb_content, fake_rgb_loss_rgb = model.quantize_content_1(fake_rgb_b_f, fake_rgb_t_f)
-    ir2Gray2Ir = model.decode(fake_rgb_content).expand(-1, 3, -1, -1)
+    # fake_rgb_b_f, fake_rgb_t_f = model.fuse(fake_rgb_b, fake_rgb_t, feat2d_x3I, feat2dI)
+    fake_rgb_content, fake_rgb_loss_rgb = model.quantize_content_1(fake_rgb_b, fake_rgb_t)
+    ir2Gray2Ir = model.decode(fake_rgb_content, featI).expand(-1, 3, -1, -1)
 
     cycle_loss = criterion(ir2Gray2Ir, ir.mean(1,True)) + criterion(gray2Ir2Gray, gray.mean(1,True))
     latent_loss = latent_loss_ir + ir_loss_ir + fake_ir_loss_ir + fake_rgb_loss_rgb
@@ -229,7 +229,8 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
 
         #cycle
-        cycle_loss, latent_loss, inter_v, inter_i, v_reconst, ir_reconst = train_cycle_rec(epoch, model, gray, ir, feat2d_x3V.detach(), feat2dV.detach(), feat2d_x3I.detach(),  feat2dI.detach())
+        cycle_loss, latent_loss, inter_v, inter_i, v_reconst, ir_reconst \
+            = train_cycle_rec(epoch, model, gray, ir, feat2d_x3V.detach(), feat2dV.detach(), feat2d_x3I.detach(),  feat2dI.detach(), featV.detach(), featI.detach())
         loss_G = (cycle_loss + latent_loss_weight * latent_loss)
 
         #discriminator
