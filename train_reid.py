@@ -16,8 +16,9 @@ from tqdm import tqdm
 from data_loader import SYSUData
 from loss import TripletLoss, TripletLoss_WRT
 from model import ModelAdaptive, ModelAdaptive_Deep, embed_net
+from part.criterion import CriterionAll, generate_edge_tensor
 from reid_tools import validate
-from old_model import embed_net2
+from part.part_model import embed_net2
 
 from vqvae_deep import VQVAE_Deep as VQVAE
 from scheduler import CycleScheduler
@@ -43,8 +44,10 @@ def train(epoch, loader, model, optimizer, device):
         loader = tqdm(loader)
 
     criterion = nn.MSELoss()
-    triplet_criterion = TripletLoss_WRT()
+    triplet_criterion = TripletLoss()
     ranking_loss = nn.MarginRankingLoss(margin=1)
+
+    criterionPart = CriterionAll(num_classes=7)
 
     mse_sum = 0
     mse_n = 0
@@ -56,12 +59,12 @@ def train(epoch, loader, model, optimizer, device):
     feat_size = 0
     correct = 0
 
-    eigen_inter, eigen_intra, svd_sum = 0 , 0, 0
+    eigen_inter, eigen_intra, part_sum = 0 , 0, 0
 
     model.person_id.requires_grad_(True)
     model.person_id.train()
 
-    for i, (img1, img2, label1, label2, camera1, camera2) in enumerate(loader):
+    for i, (img1, img2, label1, label2, camera1, camera2, p_label1, p_label2) in enumerate(loader):
         # vq_vae, person_id =  model['vq_vae'], model['person_id']
 
         img1 = img1.to(device)
@@ -69,9 +72,12 @@ def train(epoch, loader, model, optimizer, device):
         label1 = label1.to(device)
         label2 = label2.to(device)
         labels = torch.cat((label1, label2), 0)
+        part_labels = torch.cat((p_label1, p_label2), 0).to(device).type(torch.cuda.LongTensor)
+        edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         bs = img1.size(0)
 
-        feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
+        feat, score, part = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
+        part_loss = criterionPart(part, [part_labels, edges])
 
         _, predicted = score.max(1)
         correct += (predicted.eq(labels).sum().item())
@@ -88,11 +94,11 @@ def train(epoch, loader, model, optimizer, device):
         # eigen_inter += S_inter.mean().item()
         # eigen_intra += S_intra.mean().item()
         # svd_loss = ranking_loss(S_inter.mean(), S_intra.mean(), torch.tensor(1))
-        svd_loss = torch.Tensor([-1]) #ranking_loss(S_inter[-1, None], S_intra[:, 0], torch.tensor([1]).cuda())
-        svd_sum += svd_loss.item()
+        # svd_loss = torch.Tensor([-1]) #ranking_loss(S_inter[-1, None], S_intra[:, 0], torch.tensor([1]).cuda())
+        part_sum += part_loss.item()
 
         optimizer.zero_grad()
-        loss_Re = loss_id_real + loss_triplet #+ S_intra.mean() + svd_loss #+ var.mean()
+        loss_Re = loss_id_real + loss_triplet + part_loss #+ S_intra.mean() + svd_loss #+ var.mean()
         loss_Re.backward()
         optimizer.step()
 
@@ -114,7 +120,7 @@ def train(epoch, loader, model, optimizer, device):
                     f"e: {epoch + 1}; l: {loss_Re.item():.3f}({loss / (i+1):.3f}); "
                     f"id: {loss_id_real.item():.3f};({id_sum / (i+1):.3f}); "
                     f"tr: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
-                    f"svd: {svd_loss.item():.3f}({svd_sum / (i+1):.3f}); "
+                    f"part: {part_loss.item():.3f}({part_sum / (i+1):.3f}); "
                     f"p: ({correct * 100 / mse_n:.2f}); "
                     f"s:({feat_size/(i+1):.2f})"
 
@@ -125,7 +131,7 @@ def train(epoch, loader, model, optimizer, device):
     writer.add_scalar("ID_loss/train", id_sum / len(loader), epoch)
     writer.add_scalar("Rec_loss/train", mse_sum / len(loader), epoch)
     writer.add_scalar("Feat_loss/train", feat_sum / len(loader), epoch)
-    writer.add_scalar("svd/train", svd_sum / len(loader), epoch)
+    writer.add_scalar("part/train", part_sum / len(loader), epoch)
 
 
 def main(args):
@@ -138,6 +144,7 @@ def main(args):
             transforms.ToPILImage(),
             # transforms.CenterCrop(args.size),
             transforms.Pad(10),
+            transforms.Resize((args.img_h, args.img_w)),
             # transforms.RandomCrop((args.img_h, args.img_w)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -145,7 +152,7 @@ def main(args):
         ]
     )
 
-    dataset = SYSUData(args.path, transform=transform)
+    dataset = SYSUData(args.path, transform=transform, part=True)
     loader_batch = args.batch_size * args.num_pos
     vq_vae = VQVAE().to(device)
     model = ModelAdaptive_Deep(dataset.num_class, vq_vae, arch='resnet50').to(device)
@@ -208,15 +215,15 @@ def main(args):
             mAp = validate(0, model, args=args, mode='all')
             writer.add_scalar("mAP/eval", mAp, i)
             if mAp > best_mAp:
-                torch.save(model.person_id.state_dict(), f"checkpoint/reid_best.pt")
+                torch.save(model.person_id.state_dict(), f"checkpoint/reid_best_part.pt")
                 best_epoch = i
                 best_mAp = mAp
             print("best mAP {:.2%} epoch {}".format(best_mAp, best_epoch))
 
         model.person_id.train()
-        torch.save(model.person_id.state_dict(), f"checkpoint/reid_last.pt")
+        torch.save(model.person_id.state_dict(), f"checkpoint/reid_last_part.pt")
         if i % 10 == 0 and dist.is_primary():
-            torch.save(model.person_id.state_dict(), f"checkpoint/reid_{str(i + 1).zfill(3)}.pt")
+            torch.save(model.person_id.state_dict(), f"checkpoint/reid_{str(i + 1).zfill(3)}_part.pt")
 
 
 

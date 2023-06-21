@@ -22,7 +22,7 @@ class SYSUData(data.Dataset):
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    def __init__(self, data_dir='../Datasets/SYSU-MM01/', transform=None):
+    def __init__(self, data_dir='../Datasets/SYSU-MM01/', transform=None, part=False):
 
         # data_dir = '../Datasets/SYSU-MM01/'
         # Load training images (path) and labels
@@ -33,6 +33,11 @@ class SYSUData(data.Dataset):
         self.train_ir_image = np.load(data_dir + 'train+Val_ir_resized_img.npy')
         self.train_ir_label = np.load(data_dir + 'train+Val_ir_resized_label.npy')
         self.train_ir_cam = np.load(data_dir + 'train+Val_ir_resized_camera.npy')
+
+        self.part = part
+        if self.part:
+            self.train_rgb_part = np.load(data_dir + 'train+Val_rgb_resized_part.npy')
+            self.train_ir_part = np.load(data_dir + 'train+Val_ir_resized_part.npy')
 
         with open(data_dir + 'color_pos.pkl', 'rb') as f:
             self.color_pos = list(pickle.load(f).values())
@@ -54,6 +59,11 @@ class SYSUData(data.Dataset):
                               self.train_color_cam[self.cIndex[index]]
         img2, target2, cam2 = self.train_ir_image[self.tIndex[index]], self.train_ir_label[self.tIndex[index]], \
                               self.train_ir_cam[self.tIndex[index]]
+
+        if self.part:
+            parts1 = self.train_rgb_part[self.cIndex[index]]
+            parts2 = self.train_ir_part[self.tIndex[index]]
+            return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2, parts1, parts2
 
         return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2
 
