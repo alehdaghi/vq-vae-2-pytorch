@@ -174,23 +174,17 @@ def main(args):
         else:
             print('==> no checkpoint found at {}'.format(args.resume))
 
-    ignored_params = list(map(id, model.person_id.parameters()))
-    ids = set(map(id, model.parameters()))
-    params = filter(lambda p: id(p) in ids, model.parameters())
-    base_params = filter(lambda p: id(p) not in ignored_params, params)
-    optimizer = optim.Adam(base_params, lr=args.lr)
+    ignored_params = list(map(id, model.person_id.bottleneck.parameters())) \
+                          + list(map(id, model.person_id.classifier.parameters()))
 
-    # ignored_params_reid = list(map(id, model.person_id.local_conv_list.parameters())) \
-    #                  + list(map(id, model.person_id.fc_list.parameters()))
-    #
-    # base_params_reid = filter(lambda p: id(p) not in ignored_params_reid, model.person_id.parameters())
-    #
-    # optimizer_reID = optim.SGD([
-    #     {'params': base_params_reid, 'lr': 0.1 * 0.01},
-    #     {'params': model.person_id.local_conv_list.parameters(), 'lr': 0.01},
-    #     {'params': model.person_id.fc_list.parameters(), 'lr': args.lr}
-    # ],
-    #     weight_decay=5e-4, momentum=0.9, nesterov=True)
+    base_params = filter(lambda p: id(p) not in ignored_params, model.person_id.parameters())
+    cls_params = model.person_id.bottleneck.parameters() + model.person_id.classifier.parameters()
+    # optimizer = optim.Adam(base_params, lr=args.lr)
+
+    optimizer = optim.SGD([
+        {'params': base_params, 'lr': args.lr_F * 0.01},
+        {'params': cls_params, 'lr': args.lr_F},
+    ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
     scheduler = None
     if args.sched == "cycle":
