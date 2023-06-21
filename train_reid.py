@@ -237,6 +237,7 @@ if __name__ == "__main__":
     parser.add_argument("--epoch", type=int, default=560)
     parser.add_argument("--start", "-s", type=int, default=0)
     parser.add_argument("--lr", type=float, default=3e-4)
+    parser.add_argument("--lr_F", type=float, default=0.1)
     parser.add_argument("--sched", type=str)
     parser.add_argument("--batch_size", "-b", type=int, default=4)
     parser.add_argument("--num_pos", "-p", type=int, default=8)
