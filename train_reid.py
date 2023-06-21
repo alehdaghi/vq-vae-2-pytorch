@@ -17,6 +17,7 @@ from data_loader import SYSUData
 from loss import TripletLoss, TripletLoss_WRT
 from model import ModelAdaptive, ModelAdaptive_Deep, embed_net
 from reid_tools import validate
+from old_model import embed_net2
 
 from vqvae_deep import VQVAE_Deep as VQVAE
 from scheduler import CycleScheduler
@@ -37,7 +38,7 @@ def random_pair(args):
     ids = ids.reshape(-1)
     return ids
 
-def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
+def train(epoch, loader, model, optimizer, device):
     if dist.is_primary():
         loader = tqdm(loader)
 
@@ -57,7 +58,6 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
 
     eigen_inter, eigen_intra, svd_sum = 0 , 0, 0
 
-
     model.person_id.requires_grad_(True)
     model.person_id.train()
 
@@ -71,38 +71,17 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         labels = torch.cat((label1, label2), 0)
         bs = img1.size(0)
 
-        if model.person_id.part :
-            feat_parts, out0, feat = model.person_id(xRGB=img1, xIR=img2, modal=0)
-            loss_id_real = torch.nn.functional.cross_entropy(out0[0], labels.long())
-            _, predicted = out0[0].max(1)
-            c = (predicted.eq(labels).sum().item())
+        feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
 
-            loss_tri_l, batch_acc = triplet_criterion(feat_parts[0], labels)
-            for j in range(len(feat_parts) - 1):
-                loss_id_real += torch.nn.functional.cross_entropy(out0[j + 1], labels.long())
-                loss_tri_l += triplet_criterion(feat_parts[j + 1], labels)[0]
+        _, predicted = score.max(1)
+        correct += (predicted.eq(labels).sum().item())
 
-                _, predicted = out0[j + 1].max(1)
-                c += (predicted.eq(labels).sum().item())
-
-            loss_triplet, batch_acc = triplet_criterion(feat, labels)
-            loss_triplet += loss_tri_l * 2
-
-
-            correct += (c/6)
-
-        else:
-            feat, score, feat2d, actMap, feat2d_x3 = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
-
-            _, predicted = score.max(1)
-            correct += (predicted.eq(labels).sum().item())
-
-            loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-            loss_triplet, _ = triplet_criterion(feat, labels)
+        loss_id_real = torch.nn.functional.cross_entropy(score, labels)
+        loss_triplet, _ = triplet_criterion(feat, labels)
 
         F = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=2)
-        var = F.var(dim=1)
-        mean = F.mean(dim=1)
+        # var = F.var(dim=1)
+        # mean = F.mean(dim=1)
 
         # _, S_inter, _ = torch.pca_lowrank(mean, q=args.batch_size, center=True, niter=3)
         # _, S_intra, _ = torch.pca_lowrank(F, q=2 * args.num_pos, center=True, niter=3)
@@ -112,11 +91,10 @@ def train(epoch, loader, model, optimizer, scheduler, device, optimizer_reid):
         svd_loss = torch.Tensor([-1]) #ranking_loss(S_inter[-1, None], S_intra[:, 0], torch.tensor([1]).cuda())
         svd_sum += svd_loss.item()
 
-        optimizer_reid.zero_grad()
+        optimizer.zero_grad()
         loss_Re = loss_id_real + loss_triplet #+ S_intra.mean() + svd_loss #+ var.mean()
         loss_Re.backward()
-        optimizer_reid.step()
-
+        optimizer.step()
 
         part_mse_sum = 0
         mse_n += 2 * img1.shape[0]
@@ -160,7 +138,7 @@ def main(args):
             transforms.ToPILImage(),
             # transforms.CenterCrop(args.size),
             transforms.Pad(10),
-            transforms.RandomCrop((args.img_h, args.img_w)),
+            # transforms.RandomCrop((args.img_h, args.img_w)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -171,7 +149,7 @@ def main(args):
     loader_batch = args.batch_size * args.num_pos
     vq_vae = VQVAE().to(device)
     model = ModelAdaptive_Deep(dataset.num_class, vq_vae, arch='resnet50').to(device)
-    model.person_id = embed_net(dataset.num_class, 'off', 'off', arch='resnet50', part=True).to(device)
+    model.person_id = embed_net2(dataset.num_class).to(device)
 
     if args.distributed:
         model = nn.parallel.DistributedDataParallel(
@@ -186,11 +164,13 @@ def main(args):
             print('==> loading checkpoint {}'.format(args.resume))
             checkpoint = torch.load(model_path)
             try:
-                model.person_id.load_state_dict(checkpoint, strict=True)
+                model.person_id.load_state_dict(checkpoint['net'], strict=True)
                 print('==> loaded checkpoint {} (epoch)'
                       .format(args.resume))
-            except:
+            except Exception as ex:
+                print(str(ex))
                 print('==> loaded checkpoint failure from {}'.format(args.resume))
+
         else:
             print('==> no checkpoint found at {}'.format(args.resume))
 
@@ -200,17 +180,17 @@ def main(args):
     base_params = filter(lambda p: id(p) not in ignored_params, params)
     optimizer = optim.Adam(base_params, lr=args.lr)
 
-    ignored_params_reid = list(map(id, model.person_id.local_conv_list.parameters())) \
-                     + list(map(id, model.person_id.fc_list.parameters()))
-
-    base_params_reid = filter(lambda p: id(p) not in ignored_params_reid, model.person_id.parameters())
-
-    optimizer_reID = optim.SGD([
-        {'params': base_params_reid, 'lr': 0.1 * 0.01},
-        {'params': model.person_id.local_conv_list.parameters(), 'lr': 0.01},
-        {'params': model.person_id.fc_list.parameters(), 'lr': args.lr}
-    ],
-        weight_decay=5e-4, momentum=0.9, nesterov=True)
+    # ignored_params_reid = list(map(id, model.person_id.local_conv_list.parameters())) \
+    #                  + list(map(id, model.person_id.fc_list.parameters()))
+    #
+    # base_params_reid = filter(lambda p: id(p) not in ignored_params_reid, model.person_id.parameters())
+    #
+    # optimizer_reID = optim.SGD([
+    #     {'params': base_params_reid, 'lr': 0.1 * 0.01},
+    #     {'params': model.person_id.local_conv_list.parameters(), 'lr': 0.01},
+    #     {'params': model.person_id.fc_list.parameters(), 'lr': args.lr}
+    # ],
+    #     weight_decay=5e-4, momentum=0.9, nesterov=True)
 
     scheduler = None
     if args.sched == "cycle":
@@ -229,8 +209,7 @@ def main(args):
             dataset, batch_size=loader_batch // args.n_gpu, sampler=sampler, num_workers=args.workers
         )
 
-
-        train(i, loader, model, optimizer, scheduler, device, optimizer_reID)
+        train(i, loader, model, optimizer, device)
         if i % 4 == 0:
             mAp = validate(0, model, args=args, mode='all')
             writer.add_scalar("mAP/eval", mAp, i)
