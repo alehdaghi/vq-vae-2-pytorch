@@ -178,7 +178,7 @@ def main(args):
                           + list(map(id, model.person_id.classifier.parameters()))
 
     base_params = filter(lambda p: id(p) not in ignored_params, model.person_id.parameters())
-    cls_params = model.person_id.bottleneck.parameters() + model.person_id.classifier.parameters()
+    cls_params = list(model.person_id.bottleneck.parameters()) + list(model.person_id.classifier.parameters())
     # optimizer = optim.Adam(base_params, lr=args.lr)
 
     optimizer = optim.SGD([
