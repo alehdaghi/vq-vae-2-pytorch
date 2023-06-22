@@ -130,7 +130,7 @@ class CriterionAll(nn.Module):
             scale_edge = F.interpolate(input=preds_edge[0], size=(h, w),
                                        mode='bilinear', align_corners=True)
             r = self.reg(scale_pred, scale_edge, target[0])
-            if torch.isnan(r):
+            if not torch.isnan(r):
                 loss += self.lamda_3 * r
 
         return loss
