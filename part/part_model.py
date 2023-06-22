@@ -224,7 +224,7 @@ class embed_net2(nn.Module):
 
         part = self.part(x, x1, x2, x3)
         # return
-        part_masks = self.maskGen(part[0][1] + part[0][1])
+        part_masks = F.softmax(F.avg_pool2d(part[0][1] + part[0][1], kernel_size=(4,4)))
 
         feats = [feat_g]
         for i in range(1, self.part_num): # 0 is background!
