@@ -219,20 +219,20 @@ class embed_net2(nn.Module):
             x_pool = self.avgpool(x)
             x_pool = x_pool.view(x_pool.size(0), x_pool.size(1))
 
-        feat = self.bottleneck(x_pool)
+        feat_g = self.bottleneck(x_pool)
 
         part = self.part(x, x1, x2, x3)
         # return
         part_masks = self.maskGen(part[0][1] + part[0][1])
 
-        feats = []
+        feats = [feat_g]
         for i in range(1, self.part_num): # 0 is background!
             mask = part_masks[:, i:i + 1, :, :]
             feat = mask * x
             feat = F.avg_pool2d(feat, feat.size()[2:])
             feat = feat.view(feat.size(0), -1)
             feats.append(self.part_descriptor(feat))
-        feats.append(feat)
+        # feats.append(feat_g)
         feats = torch.cat(feats, 1)
 
         if self.training:
