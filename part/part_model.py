@@ -139,14 +139,22 @@ class embed_net2(nn.Module):
         self.bottleneck = nn.BatchNorm1d(self.pool_dim)
         self.bottleneck.bias.requires_grad_(False)  # no shift
 
-        self.classifier = nn.Linear(self.pool_dim, class_num, bias=False)
+        self.part_num = 7
+        self.classifier = nn.Linear(self.pool_dim + (self.part_num - 1) * 256, class_num, bias=False)
 
         self.bottleneck.apply(weights_init_kaiming)
         self.classifier.apply(weights_init_classifier)
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         self.gm_pool = gm_pool
 
-        self.part = PartModel(7)
+
+
+        self.maskGen = nn.Sequential(nn.Conv2d(self.part_num, 128, kernel_size=3, padding=1, stride=2, bias=False),
+                                     nn.Conv2d(128, self.part_num, kernel_size=3, padding=1, stride=2, bias=False),
+                                     nn.Sigmoid())
+        self.part = PartModel(self.part_num)
+        self.part_descriptor = nn.Linear(self.pool_dim, 256, bias=False)
+        self.pool_dim += (self.part_num - 1) * 256
 
     def forward(self, xRGB, xIR, xZ=None, modal=0, with_feature = False):
         if modal == 0:
@@ -200,10 +208,9 @@ class embed_net2(nn.Module):
         else:
             x = self.base_resnet(x)
 
-
-
+        b, c, h, w = x.shape
         if self.gm_pool  == 'on':
-            b, c, h, w = x.shape
+
             x = x.view(b, c, -1)
             p = 3.0
             x_pool = (torch.mean(x**p, dim=-1) + 1e-12)**(1/p)
@@ -216,11 +223,25 @@ class embed_net2(nn.Module):
 
         part = self.part(x, x1, x2, x3)
         # return
+        part_masks = self.maskGen(part[0][1] + part[0][1])
 
-        if self.training :
-            return feat, self.classifier(feat), part
+        feats = []
+        for i in range(1, self.part_num): # 0 is background!
+            mask = part_masks[:, i:i + 1, :, :]
+            feat = mask * x
+            feat = F.avg_pool2d(feat, feat.size()[2:])
+            feat = feat.view(feat.size(0), -1)
+            feats.append(self.part_descriptor(feat))
+        feats.append(feat)
+        feats = torch.cat(feats, 1)
+
+        if self.training:
+            masks = part_masks.view(b, self.part_num, w * h)
+            loss_reg = torch.bmm(masks, masks.permute(0, 2, 1))
+            loss_reg = torch.triu(loss_reg, diagonal=1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
+            return feats, self.classifier(feats), part, loss_reg
         else:
-            return self.l2norm(x_pool), self.l2norm(feat)
+            return self.l2norm(x_pool), self.l2norm(feats)
 
 
 
