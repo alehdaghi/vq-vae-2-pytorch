@@ -77,7 +77,7 @@ def train(epoch, loader, model, optimizer, device):
         bs = img1.size(0)
 
         feat, score, part, loss_reg = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
-        part_loss = criterionPart(part, [part_labels, edges]) + 0.1 * loss_reg
+        part_loss = criterionPart(part, [part_labels, edges]) + loss_reg
 
         _, predicted = score.max(1)
         correct += (predicted.eq(labels).sum().item())
