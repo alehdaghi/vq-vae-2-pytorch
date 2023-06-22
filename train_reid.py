@@ -114,7 +114,7 @@ def train(epoch, loader, model, optimizer, device):
         feat_size += feat.sum()/(bs * model.person_id.pool_dim)
 
         if i % 100 == 0:
-            utils.save_image(part[0][1].view(bs * 7, 1, part[0][1].shape[2], part[0][1].shape[3]),
+            utils.save_image(part[0][1].view(2*bs * 7, 1, part[0][1].shape[2], part[0][1].shape[3]),
                              f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                                      normilized=True, nrow=7)
 
