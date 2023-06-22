@@ -77,7 +77,7 @@ def train(epoch, loader, model, optimizer, device):
         bs = img1.size(0)
 
         feat, score, part, loss_reg = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
-        part_loss = criterionPart(part, [part_labels, edges]) + loss_reg
+        part_loss = criterionPart(part, [part_labels, edges]) #+ loss_reg
 
         _, predicted = score.max(1)
         correct += (predicted.eq(labels).sum().item())
@@ -112,6 +112,11 @@ def train(epoch, loader, model, optimizer, device):
         feat_err = loss_triplet.item()
         feat_sum += feat_err
         feat_size += feat.sum()/(bs * model.person_id.pool_dim)
+
+        if i % 100 == 0:
+            utils.save_image(part[0][1].view(bs * 7, 1, part[0][1].shape[2], part[0][1].shape[3]),
+                             f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
+                                     normilized=True, nrow=7)
 
         if dist.is_primary():
             lr = optimizer.param_groups[0]["lr"]

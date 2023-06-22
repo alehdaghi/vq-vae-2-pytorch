@@ -223,6 +223,7 @@ class embed_net2(nn.Module):
         feat_g = self.bottleneck(x_pool)
 
         part = self.part(x, x1, x2, x3)
+
         # return
         part_masks = F.softmax(F.avg_pool2d(part[0][1] + part[0][1], kernel_size=(4,4)))
 
