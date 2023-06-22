@@ -33,7 +33,9 @@ class ConsistencyLoss(nn.Module):
         v_edge_pre = edge_pre[label!=255]
         v_edge_pre = v_edge_pre.type(torch.cuda.FloatTensor)
         positive_union = (v_generate_edge==1)&(v_edge_pre==1) # only the positive values count
-        return F.smooth_l1_loss(v_generate_edge[positive_union].squeeze(0), v_edge_pre[positive_union].squeeze(0))
+        l = F.smooth_l1_loss(v_generate_edge[positive_union].squeeze(0), v_edge_pre[positive_union].squeeze(0))
+        print("reg", l)
+        return l
 
 
 def flatten_probas(input, target, labels, ignore=255):
@@ -117,6 +119,8 @@ class CriterionAll(nn.Module):
                                        mode='bilinear', align_corners=True)
             loss += self.lamda_2 * F.cross_entropy(scale_pred, target[1],
                                                        weights.cuda(), ignore_index=self.ignore_index)
+
+        print("loss", loss)
         # consistency regularization
         preds_parsing = preds[0]
         preds_edge = preds[1]
