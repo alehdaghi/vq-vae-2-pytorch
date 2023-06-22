@@ -173,7 +173,7 @@ def main(args):
             print('==> loading checkpoint {}'.format(args.resume))
             checkpoint = torch.load(model_path)
             try:
-                model.person_id.load_state_dict(checkpoint['net'], strict=True)
+                model.person_id.load_state_dict(checkpoint, strict=True)
                 print('==> loaded checkpoint {} (epoch)'
                       .format(args.resume))
             except Exception as ex:

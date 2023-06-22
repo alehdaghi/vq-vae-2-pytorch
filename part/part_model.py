@@ -151,7 +151,8 @@ class embed_net2(nn.Module):
 
         self.maskGen = nn.Sequential(nn.Conv2d(self.part_num, 128, kernel_size=3, padding=1, stride=2, bias=False),
                                      nn.Conv2d(128, self.part_num, kernel_size=3, padding=1, stride=2, bias=False),
-                                     nn.Sigmoid())
+                                     nn.Sigmoid(),
+                                     nn.Softmax())
         self.part = PartModel(self.part_num)
         self.part_descriptor = nn.Linear(self.pool_dim, 256, bias=False)
         self.pool_dim += (self.part_num - 1) * 256
