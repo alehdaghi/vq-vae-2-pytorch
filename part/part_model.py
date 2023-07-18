@@ -148,6 +148,8 @@ class embed_net2(nn.Module):
         self.gm_pool = gm_pool
 
 
+        self.clsParts= nn.ModuleList([nn.Sequential(nn.BatchNorm1d(256),nn.Linear(256, class_num)) for i in range(self.part_num-1) ])
+
 
         self.maskGen = nn.Sequential(nn.Conv2d(self.part_num, 128, kernel_size=3, padding=1, stride=2, bias=False),
                                      nn.Conv2d(128, self.part_num, kernel_size=3, padding=1, stride=2, bias=False),
@@ -230,13 +232,16 @@ class embed_net2(nn.Module):
         maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:,1:], x)
         maskedFeat /= einops.reduce(part_masks[:, 1:], 'b r h w -> b r 1', 'sum') + 1e-7
 
+        partsScore = []
         feats = [feat_g]
         for i in range(1, self.part_num): # 0 is background!
             mask = part_masks[:, i:i + 1, :, :]
             feat = mask * x
             feat = F.avg_pool2d(feat, feat.size()[2:])
             feat = feat.view(feat.size(0), -1)
-            feats.append(self.part_descriptor(feat))
+            feat = self.part_descriptor(feat)
+            partsScore.append(self.clsParts[i-1](feat))
+            feats.append(feat)
         # feats.append(feat_g)
         feats = torch.cat(feats, 1)
 
@@ -244,7 +249,7 @@ class embed_net2(nn.Module):
             masks = part_masks.view(b, self.part_num, w * h)
             loss_reg = torch.bmm(masks, masks.permute(0, 2, 1))
             loss_reg = torch.triu(loss_reg, diagonal=1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
-            return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks
+            return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks, partsScore
         else:
             return self.l2norm(x_pool), self.l2norm(feats)
 
