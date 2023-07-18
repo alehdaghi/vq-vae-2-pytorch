@@ -123,7 +123,7 @@ def train(epoch, loader, model, optimizer, device):
             h,w = part[0][1].shape[2], part[0][1].shape[3]
             img = Fn.interpolate(input=torch.cat([img1, img2], dim=0)[index], size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
             mask =  part[0][1][index].unsqueeze(2).expand(-1,-1,3,-1,-1)
-            sample = torch.cat([invTrans(img), mask], dim=1).view(2 * bs * (7+1), 3, h, w)
+            sample = torch.cat([invTrans(img), mask], dim=1).view(index.size(0) * (7+1), 3, h, w)
             utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
                                      normilized=True, nrow=8)
 
