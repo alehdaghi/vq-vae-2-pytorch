@@ -16,7 +16,8 @@ from tqdm import tqdm
 from data_loader import SYSUData
 from loss import TripletLoss, TripletLoss_WRT
 from model import ModelAdaptive, ModelAdaptive_Deep, embed_net
-from part.criterion import CriterionAll, generate_edge_tensor
+from part.criterion import CriterionAll, generate_edge_tensor, contrastive_loss
+from part.sup_con_loss import SupConLoss
 from reid_tools import validate
 from part.part_model import embed_net2
 
@@ -48,6 +49,7 @@ def train(epoch, loader, model, optimizer, device):
     ranking_loss = nn.MarginRankingLoss(margin=1)
 
     criterionPart = CriterionAll(num_classes=7)
+    contrastive = contrastive_loss
 
     mse_sum = 0
     mse_n = 0
@@ -59,10 +61,11 @@ def train(epoch, loader, model, optimizer, device):
     feat_size = 0
     correct = 0
 
-    eigen_inter, eigen_intra, part_sum, reg_sum = 0 , 0, 0, 0
+    eigen_inter, eigen_intra, part_sum, reg_sum, unsup_sum = 0 , 0, 0, 0, 0
 
     model.person_id.requires_grad_(True)
     model.person_id.train()
+    partsLabel = torch.arange(1,7).cuda()
 
     for i, (img1, img2, label1, label2, camera1, camera2, p_label1, p_label2) in enumerate(loader):
         # vq_vae, person_id =  model['vq_vae'], model['person_id']
@@ -76,8 +79,9 @@ def train(epoch, loader, model, optimizer, device):
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         bs = img1.size(0)
 
-        feat, score, part, loss_reg = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
+        feat, score, part, loss_reg, partsFeat = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
         part_loss = criterionPart(part, [part_labels, edges]) #+ loss_reg
+        unsup_part = contrastive(partsFeat)
 
         _, predicted = score.max(1)
         correct += (predicted.eq(labels).sum().item())
@@ -97,9 +101,10 @@ def train(epoch, loader, model, optimizer, device):
         # svd_loss = torch.Tensor([-1]) #ranking_loss(S_inter[-1, None], S_intra[:, 0], torch.tensor([1]).cuda())
         part_sum += part_loss.item()
         reg_sum += loss_reg.item()
+        unsup_part += unsup_part.item()
 
         optimizer.zero_grad()
-        loss_Re = loss_id_real + loss_triplet + part_loss #+ S_intra.mean() + svd_loss #+ var.mean()
+        loss_Re = loss_id_real + loss_triplet + part_loss + unsup_part #+ S_intra.mean() + svd_loss #+ var.mean()
         loss_Re.backward()
         optimizer.step()
 
@@ -126,8 +131,9 @@ def train(epoch, loader, model, optimizer, device):
                     f"e: {epoch + 1}; l: {loss_Re.item():.3f}({loss / (i+1):.3f}); "
                     f"id: {loss_id_real.item():.3f};({id_sum / (i+1):.3f}); "
                     f"tr: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
-                    f"part: {part_loss.item():.3f}({part_sum / (i+1):.3f}); "
-                    f"reg: {loss_reg.item():.3f}({reg_sum / (i+1):.3f}); "
+                    f"pa: {part_loss.item():.3f}({part_sum / (i+1):.3f}); "
+                    f"re: {loss_reg.item():.3f}({reg_sum / (i+1):.3f}); "
+                    f"un: {unsup_part.item():.3f}({unsup_part / (i+1):.3f}); "
                     f"p: ({correct * 100 / mse_n:.2f}); "
                     f"s:({feat_size/(i+1):.2f})"
 

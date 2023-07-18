@@ -1,4 +1,4 @@
-
+import einops
 import torch
 import torch.nn as nn
 from torch.nn import init
@@ -222,10 +222,13 @@ class embed_net2(nn.Module):
 
         feat_g = self.bottleneck(x_pool)
 
-        part = self.part(x, x1, x2, x3)
+        part, partsFeat = self.part(x, x1, x2, x3)
 
         # return
         part_masks = F.softmax(F.avg_pool2d(part[0][1] + part[0][1], kernel_size=(4,4)))
+
+        maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:,1:], x)
+        maskedFeat /= einops.reduce(part_masks[:, 1:], 'b r h w -> b r 1', 'sum') + 1e-7
 
         feats = [feat_g]
         for i in range(1, self.part_num): # 0 is background!
@@ -241,7 +244,7 @@ class embed_net2(nn.Module):
             masks = part_masks.view(b, self.part_num, w * h)
             loss_reg = torch.bmm(masks, masks.permute(0, 2, 1))
             loss_reg = torch.triu(loss_reg, diagonal=1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
-            return feats, self.classifier(feats), part, loss_reg
+            return feats, self.classifier(feats), part, loss_reg, maskedFeat
         else:
             return self.l2norm(x_pool), self.l2norm(feats)
 
@@ -270,4 +273,4 @@ class PartModel(nn.Module):
         # Fusion Branch
         x = torch.cat([parsing_fea, edge_fea], dim=1)
         fusion_result = self.fushion(x)
-        return [[parsing_result, fusion_result], [edge_result]]
+        return [[parsing_result, fusion_result], [edge_result]], x
