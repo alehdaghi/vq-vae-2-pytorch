@@ -211,23 +211,25 @@ class embed_net2(nn.Module):
         else:
             x = self.base_resnet(x)
 
+        part, partsFeat = self.part(x, x1, x2, x3)
+        part_masks = F.softmax(F.avg_pool2d(part[0][1] + part[0][1], kernel_size=(4, 4)))
+
         b, c, h, w = x.shape
         if self.gm_pool  == 'on':
 
-            x = x.view(b, c, -1)
+            xx = (1- part_masks[:, 0:1, :, :]) * x
+            xx = xx.view(b, c, -1)
+
             p = 3.0
-            x_pool = (torch.mean(x**p, dim=-1) + 1e-12)**(1/p)
-            x = x.view(b,c, h, w)
+            x_pool = (torch.mean(xx**p, dim=-1) + 1e-12)**(1/p)
+            xx = x.view(b,c, h, w)
         else:
             x_pool = self.avgpool(x)
             x_pool = x_pool.view(x_pool.size(0), x_pool.size(1))
 
         feat_g = self.bottleneck(x_pool)
 
-        part, partsFeat = self.part(x, x1, x2, x3)
 
-        # return
-        part_masks = F.softmax(F.avg_pool2d(part[0][1] + part[0][1], kernel_size=(4,4)))
 
         maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:,1:], x)
         maskedFeat /= einops.reduce(part_masks[:, 1:], 'b r h w -> b r 1', 'sum') + 1e-7
