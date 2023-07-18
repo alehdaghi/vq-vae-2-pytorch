@@ -79,12 +79,15 @@ def train(epoch, loader, model, optimizer, device):
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         bs = img1.size(0)
 
-        feat, score, part, loss_reg, partsFeat, part_masks = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
+        feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
         part_loss = criterionPart(part, [part_labels, edges]) #+ loss_reg
         unsup_part = contrastive(partsFeat)
 
         _, predicted = score.max(1)
         correct += (predicted.eq(labels).sum().item())
+
+
+        loss_id_parts = sum([torch.nn.functional.cross_entropy(ps, labels) / 6 for ps in partsScore])
 
         loss_id_real = torch.nn.functional.cross_entropy(score, labels)
         loss_triplet, _ = triplet_criterion(feat, labels)
@@ -100,11 +103,11 @@ def train(epoch, loader, model, optimizer, device):
         # svd_loss = ranking_loss(S_inter.mean(), S_intra.mean(), torch.tensor(1))
         # svd_loss = torch.Tensor([-1]) #ranking_loss(S_inter[-1, None], S_intra[:, 0], torch.tensor([1]).cuda())
         part_sum += part_loss.item()
-        reg_sum += loss_reg.item()
+        reg_sum += loss_id_parts.item()
         unsup_part += unsup_part.item()
 
         optimizer.zero_grad()
-        loss_Re = loss_id_real + loss_triplet + part_loss + unsup_part #+ S_intra.mean() + svd_loss #+ var.mean()
+        loss_Re = loss_id_real + loss_triplet + part_loss + unsup_part + loss_id_parts #+ S_intra.mean() + svd_loss #+ var.mean()
         loss_Re.backward()
         optimizer.step()
 
@@ -136,7 +139,7 @@ def train(epoch, loader, model, optimizer, device):
                     f"id: {loss_id_real.item():.3f};({id_sum / (i+1):.3f}); "
                     f"tr: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
                     f"pa: {part_loss.item():.3f}({part_sum / (i+1):.3f}); "
-                    f"re: {loss_reg.item():.3f}({reg_sum / (i+1):.3f}); "
+                    f"re: {loss_id_parts.item():.3f}({reg_sum / (i+1):.3f}); "
                     f"un: {unsup_part.item():.3f}({unsup_part / (i+1):.3f}); "
                     f"p: ({correct * 100 / mse_n:.2f}); "
                     f"s:({feat_size/(i+1):.2f})"
