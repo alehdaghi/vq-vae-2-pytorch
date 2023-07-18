@@ -5,7 +5,7 @@ import os
 import numpy as np
 import torch
 from torch import nn, optim
-import torch.nn.functional as F
+import torch.nn.functional as Fn
 from torch.utils.data import DataLoader
 import einops
 
@@ -79,7 +79,7 @@ def train(epoch, loader, model, optimizer, device):
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         bs = img1.size(0)
 
-        feat, score, part, loss_reg, partsFeat = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
+        feat, score, part, loss_reg, partsFeat, part_masks = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
         part_loss = criterionPart(part, [part_labels, edges]) #+ loss_reg
         unsup_part = contrastive(partsFeat)
 
@@ -119,9 +119,13 @@ def train(epoch, loader, model, optimizer, device):
         feat_size += feat.sum()/(bs * model.person_id.pool_dim)
 
         if i % 100 == 0:
-            utils.save_image(part[0][1].view(2*bs * 7, 1, part[0][1].shape[2], part[0][1].shape[3]),
-                             f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
-                                     normilized=True, nrow=7)
+            index = np.random.choice(np.arange(2 * bs), min(2 * bs, 16), replace=False)
+            h,w = part[0][1].shape[2], part[0][1].shape[3]
+            img = Fn.interpolate(input=torch.cat([img1, img2], dim=0)[index], size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
+            mask =  part[0][1][index].unsqueeze(2).expand(-1,-1,3,-1,-1)
+            sample = torch.cat([invTrans(img), mask], dim=1).view(2 * bs * (7+1), 3, h, w)
+            utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
+                                     normilized=True, nrow=8)
 
         if dist.is_primary():
             lr = optimizer.param_groups[0]["lr"]
