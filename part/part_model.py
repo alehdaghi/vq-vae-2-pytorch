@@ -72,6 +72,8 @@ class ShallowModule(nn.Module):
     def __init__(self, arch='resnet50'):
         super(ShallowModule, self).__init__()
         resnet = torchvision.models.resnet50(pretrained=True)
+        resnet.conv1.stride = (1, 1)
+        # resnet.maxpool.stride = (1, 1)
         self.resnet_part1 = nn.Sequential(
             resnet.conv1, resnet.bn1, resnet.maxpool,  # no relu
             resnet.layer1)
@@ -156,7 +158,7 @@ class embed_net2(nn.Module):
                                      nn.Sigmoid(),
                                      nn.Softmax())
         self.part = PartModel(self.part_num)
-        self.part_descriptor = nn.Linear(self.pool_dim, 256, bias=False)
+        self.part_descriptor = nn.Sequential(nn.Linear(self.pool_dim, 512), nn.Linear(512, 256))
         self.pool_dim += (self.part_num - 1) * 256
 
     def forward(self, xRGB, xIR, xZ=None, modal=0, with_feature = False):

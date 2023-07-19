@@ -74,13 +74,15 @@ def train(epoch, loader, model, optimizer, device):
         img2 = img2.to(device)
         label1 = label1.to(device)
         label2 = label2.to(device)
-        labels = torch.cat((label1, label2), 0)
-        part_labels = torch.cat((p_label1, p_label2), 0).to(device).type(torch.cuda.LongTensor)
+        labels = torch.cat((label1,), 0)
+        imgs = torch.cat((img1,), dim=0)
+
+        part_labels = torch.cat((p_label1,), 0).to(device).type(torch.cuda.LongTensor)
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         bs = img1.size(0)
 
-        feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=True)
-        part_loss = criterionPart(part, [part_labels, edges]) #+ loss_reg
+        feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=1, with_feature=True)
+        part_loss = criterionPart(part, [part_labels, edges]) + loss_reg
         unsup_part = contrastive(partsFeat)
 
         _, predicted = score.max(1)
@@ -122,10 +124,11 @@ def train(epoch, loader, model, optimizer, device):
         feat_size += feat.sum()/(bs * model.person_id.pool_dim)
 
         if i % 100 == 0:
-            index = np.random.choice(np.arange(2 * bs), min(2 * bs, 16), replace=False)
+            B = labels.shape[0]
+            index = np.random.choice(np.arange(B), min(B, 16), replace=False)
             h,w = part[0][1].shape[2], part[0][1].shape[3]
             p = Fn.interpolate(part_labels.unsqueeze(1).expand(-1, 3, -1, -1)[index]/6, size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
-            img = Fn.interpolate(input=torch.cat([img1, img2], dim=0)[index], size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
+            img = Fn.interpolate(imgs[index], size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
             mask =  part[0][1][index].unsqueeze(2).expand(-1,-1,3,-1,-1)
             sample = torch.cat([invTrans(img), p, mask], dim=1).view(-1, 3, h, w)
             utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
