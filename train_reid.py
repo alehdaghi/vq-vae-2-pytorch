@@ -82,7 +82,7 @@ def train(epoch, loader, model, optimizer, device):
         bs = img1.size(0)
 
         feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=1, with_feature=True)
-        part_loss = criterionPart(part, [part_labels, edges]) + loss_reg
+        part_loss = criterionPart(part, [part_labels, edges]) #+ loss_reg
         unsup_part = contrastive(partsFeat)
 
         _, predicted = score.max(1)
