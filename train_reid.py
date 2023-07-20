@@ -50,6 +50,7 @@ def train(epoch, loader, model, optimizer, device):
 
     criterionPart = CriterionAll(num_classes=7)
     contrastive = contrastive_loss
+    supCons = SupConLoss()
 
     mse_sum = 0
     mse_n = 0
@@ -83,7 +84,11 @@ def train(epoch, loader, model, optimizer, device):
 
         feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=1, with_feature=True)
         part_loss = criterionPart(part, [part_labels, edges]) * 0 #+ loss_reg
-        unsup_part = contrastive(partsFeat)
+
+        pIndex = torch.arange(partsFeat.shape[1]).to(device)
+        t1 = supCons(partsFeat.transpose(0,1), pIndex)
+        unsup_part = contrastive(partsFeat) + t1
+        # t2 = supCons(partsFeat.reshape(-1, 2048), pIndex.repeat(partsFeat.shape[0]))
 
         _, predicted = score.max(1)
         correct += (predicted.eq(labels).sum().item())
