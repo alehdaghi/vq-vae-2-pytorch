@@ -233,18 +233,14 @@ class embed_net2(nn.Module):
 
 
 
-        maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:,1:], x)
-        maskedFeat /= einops.reduce(part_masks[:, 1:], 'b r h w -> b r 1', 'sum') + 1e-7
+        maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:,1:], x) / (h * w)
+        # maskedFeat /= einops.reduce(part_masks[:, 1:], 'b r h w -> b r 1', 'sum') + 1e-7
 
         partsScore = []
         feats = [feat_g]
-        for i in range(1, self.part_num): # 0 is background!
-            mask = part_masks[:, i:i + 1, :, :]
-            feat = mask * x
-            feat = F.avg_pool2d(feat, feat.size()[2:])
-            feat = feat.view(feat.size(0), -1)
-            feat = self.part_descriptor(feat)
-            partsScore.append(self.clsParts[i-1](feat))
+        for i in range(0, self.part_num - 1): # 0 is background!
+            feat = self.part_descriptor(maskedFeat[:, i])
+            partsScore.append(self.clsParts[i](feat))
             feats.append(feat)
         # feats.append(feat_g)
         feats = torch.cat(feats, 1)

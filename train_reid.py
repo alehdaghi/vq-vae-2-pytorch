@@ -130,9 +130,9 @@ def train(epoch, loader, model, optimizer, device):
             p = Fn.interpolate(part_labels.unsqueeze(1).expand(-1, 3, -1, -1)[index]/6, size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
             img = Fn.interpolate(imgs[index], size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
             mask =  part[0][1][index].unsqueeze(2).expand(-1,-1,3,-1,-1)
-            sample = torch.cat([invTrans(img), p, mask], dim=1).view(-1, 3, h, w)
-            utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png",
-                                     normilized=True, nrow=9)
+            pModel = (torch.argmax(part[0][1][index], dim=1) / 6).unsqueeze(1).unsqueeze(1).expand(-1,-1,3,-1,-1)
+            sample = torch.cat([invTrans(img), p, pModel, mask], dim=1).view(-1, 3, h, w)
+            utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png", normilized=True, nrow=10)
 
 
         if dist.is_primary():
