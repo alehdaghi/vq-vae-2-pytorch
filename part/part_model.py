@@ -249,6 +249,8 @@ class embed_net2(nn.Module):
             masks = part_masks.view(b, self.part_num, w * h)
             loss_reg = torch.bmm(masks, masks.permute(0, 2, 1))
             loss_reg = torch.triu(loss_reg, diagonal=1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
+            if with_feature:
+                return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks, partsScore, x
             return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks, partsScore
         else:
             return self.l2norm(x_pool), self.l2norm(feats)
