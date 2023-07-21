@@ -83,7 +83,8 @@ def train(epoch, loader, model, optimizer, device):
         bs = img1.size(0)
 
         feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=1, with_feature=False)
-        part_loss = criterionPart(part, [part_labels, edges])  #+ loss_reg
+        good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
+        part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]], [part_labels[good_part], edges[good_part]])  #+ loss_reg
 
         pIndex = torch.arange(partsFeat.shape[1]).to(device)
         # t1 = supCons(partsFeat.transpose(0,1), pIndex)
