@@ -82,8 +82,8 @@ def train(epoch, loader, model, optimizer, device):
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         bs = img1.size(0)
 
-        feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=1, with_feature=True)
-        part_loss = criterionPart(part, [part_labels, edges]) * 0 #+ loss_reg
+        feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=1, with_feature=False)
+        part_loss = criterionPart(part, [part_labels, edges])  #+ loss_reg
 
         pIndex = torch.arange(partsFeat.shape[1]).to(device)
         t1 = supCons(partsFeat.transpose(0,1), pIndex)
