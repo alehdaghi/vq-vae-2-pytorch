@@ -86,8 +86,8 @@ def train(epoch, loader, model, optimizer, device):
         part_loss = criterionPart(part, [part_labels, edges])  #+ loss_reg
 
         pIndex = torch.arange(partsFeat.shape[1]).to(device)
-        t1 = supCons(partsFeat.transpose(0,1), pIndex)
-        unsup_part = contrastive(partsFeat) + t1
+        # t1 = supCons(partsFeat.transpose(0,1), pIndex)
+        unsup_part = contrastive(partsFeat) #+ t1
         # t2 = supCons(partsFeat.reshape(-1, 2048), pIndex.repeat(partsFeat.shape[0]))
 
         _, predicted = score.max(1)
