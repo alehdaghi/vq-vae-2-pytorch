@@ -75,14 +75,14 @@ def train(epoch, loader, model, optimizer, device):
         img2 = img2.to(device)
         label1 = label1.to(device)
         label2 = label2.to(device)
-        labels = torch.cat((label1,), 0)
-        imgs = torch.cat((img1,), dim=0)
+        labels = torch.cat((label1, label2), 0)
+        imgs = torch.cat((img1, img2), dim=0)
 
-        part_labels = torch.cat((p_label1,), 0).to(device).type(torch.cuda.LongTensor)
+        part_labels = torch.cat((p_label1, p_label2), 0).to(device).type(torch.cuda.LongTensor)
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         bs = img1.size(0)
 
-        feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=1, with_feature=False)
+        feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False)
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]], [part_labels[good_part], edges[good_part]])  #+ loss_reg
 
@@ -138,7 +138,7 @@ def train(epoch, loader, model, optimizer, device):
             mask =  part[0][1][index].unsqueeze(2).expand(-1,-1,3,-1,-1)
             pModel = (torch.argmax(part[0][1][index], dim=1) / 6).unsqueeze(1).unsqueeze(1).expand(-1,-1,3,-1,-1)
             sample = torch.cat([invTrans(img), p, pModel, mask], dim=1).view(-1, 3, h, w)
-            utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png", normilized=True, nrow=10)
+            utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}-j.png", normilized=True, nrow=10)
 
 
         if dist.is_primary():
@@ -246,15 +246,15 @@ def main(args):
             mAp = validate(0, model, args=args, mode='all')
             writer.add_scalar("mAP/eval", mAp, i)
             if mAp > best_mAp:
-                torch.save(model.person_id.state_dict(), f"checkpoint/reid_best_part.pt")
+                torch.save(model.person_id.state_dict(), f"checkpoint/reid_best_part-j.pt")
                 best_epoch = i
                 best_mAp = mAp
             print("best mAP {:.2%} epoch {}".format(best_mAp, best_epoch))
 
         model.person_id.train()
-        torch.save(model.person_id.state_dict(), f"checkpoint/reid_last_part.pt")
+        torch.save(model.person_id.state_dict(), f"checkpoint/reid_last_part-j.pt")
         if i % 10 == 0 and dist.is_primary():
-            torch.save(model.person_id.state_dict(), f"checkpoint/reid_{str(i + 1).zfill(3)}_part.pt")
+            torch.save(model.person_id.state_dict(), f"checkpoint/reid_{str(i + 1).zfill(3)}_part-j.pt")
 
 
 
