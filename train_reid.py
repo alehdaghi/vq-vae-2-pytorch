@@ -85,6 +85,7 @@ def train(epoch, loader, model, optimizer, device):
         feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False)
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]], [part_labels[good_part], edges[good_part]])  #+ loss_reg
+        # part_loss = criterionPart(part, [part_labels, edges])
 
         pIndex = torch.arange(partsFeat.shape[1]).to(device)
         # t1 = supCons(partsFeat.transpose(0,1), pIndex)
@@ -112,7 +113,7 @@ def train(epoch, loader, model, optimizer, device):
         # svd_loss = torch.Tensor([-1]) #ranking_loss(S_inter[-1, None], S_intra[:, 0], torch.tensor([1]).cuda())
         part_sum += part_loss.item()
         reg_sum += loss_id_parts.item()
-        unsup_part += unsup_part.item()
+        unsup_sum += unsup_part.item()
 
         optimizer.zero_grad()
         loss_Re = loss_id_real + loss_triplet + part_loss + unsup_part + loss_id_parts #+ S_intra.mean() + svd_loss #+ var.mean()
@@ -138,7 +139,7 @@ def train(epoch, loader, model, optimizer, device):
             mask =  part[0][1][index].unsqueeze(2).expand(-1,-1,3,-1,-1)
             pModel = (torch.argmax(part[0][1][index], dim=1) / 6).unsqueeze(1).unsqueeze(1).expand(-1,-1,3,-1,-1)
             sample = torch.cat([invTrans(img), p, pModel, mask], dim=1).view(-1, 3, h, w)
-            utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}-j.png", normilized=True, nrow=10)
+            utils.save_image(sample, f"sample/part_{str(epoch + 1).zfill(5)}_{str(i).zfill(5)}.png", normilized=True, nrow=10)
 
 
         if dist.is_primary():
@@ -151,7 +152,7 @@ def train(epoch, loader, model, optimizer, device):
                     f"tr: {feat_err:.3f}({feat_sum / (i+1):.5f}); "
                     f"pa: {part_loss.item():.3f}({part_sum / (i+1):.3f}); "
                     f"re: {loss_id_parts.item():.3f}({reg_sum / (i+1):.3f}); "
-                    f"un: {unsup_part.item():.3f}({unsup_part / (i+1):.3f}); "
+                    f"un: {unsup_part.item():.3f}({unsup_sum / (i+1):.3f}); "
                     f"p: ({correct * 100 / mse_n:.2f}); "
                     f"s:({feat_size/(i+1):.2f})"
 
@@ -246,15 +247,15 @@ def main(args):
             mAp = validate(0, model, args=args, mode='all')
             writer.add_scalar("mAP/eval", mAp, i)
             if mAp > best_mAp:
-                torch.save(model.person_id.state_dict(), f"checkpoint/reid_best_part-j.pt")
+                torch.save(model.person_id.state_dict(), f"checkpoint/reid_best_part.pt")
                 best_epoch = i
                 best_mAp = mAp
             print("best mAP {:.2%} epoch {}".format(best_mAp, best_epoch))
 
         model.person_id.train()
-        torch.save(model.person_id.state_dict(), f"checkpoint/reid_last_part-j.pt")
+        torch.save(model.person_id.state_dict(), f"checkpoint/reid_last_part.pt")
         if i % 10 == 0 and dist.is_primary():
-            torch.save(model.person_id.state_dict(), f"checkpoint/reid_{str(i + 1).zfill(3)}_part-j.pt")
+            torch.save(model.person_id.state_dict(), f"checkpoint/reid_{str(i + 1).zfill(3)}_part.pt")
 
 
 
