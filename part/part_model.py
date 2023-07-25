@@ -219,7 +219,7 @@ class embed_net2(nn.Module):
         b, c, h, w = x.shape
         if self.gm_pool  == 'on':
 
-            xx = (1- part_masks[:, 0:1, :, :]) * x
+            xx = x
             xx = xx.view(b, c, -1)
 
             p = 3.0
