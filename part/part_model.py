@@ -72,7 +72,7 @@ class ShallowModule(nn.Module):
     def __init__(self, arch='resnet50'):
         super(ShallowModule, self).__init__()
         resnet = torchvision.models.resnet50(pretrained=True)
-        resnet.conv1.stride = (1, 1)
+        # resnet.conv1.stride = (1, 1)
         # resnet.maxpool.stride = (1, 1)
         self.resnet_part1 = nn.Sequential(
             resnet.conv1, resnet.bn1, resnet.maxpool,  # no relu
@@ -245,12 +245,13 @@ class embed_net2(nn.Module):
         # feats.append(feat_g)
         feats = torch.cat(feats, 1)
 
+        if with_feature:
+            return feats, self.classifier(feats), part, None, maskedFeat, part_masks, partsScore, x
+
         if self.training:
             masks = part_masks.view(b, self.part_num, w * h)
-            loss_reg = torch.bmm(masks, masks.permute(0, 2, 1))
-            loss_reg = torch.triu(loss_reg, diagonal=1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
-            if with_feature:
-                return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks, partsScore, x
+            loss_reg = None#torch.bmm(masks, masks.permute(0, 2, 1))
+            # loss_reg = torch.triu(loss_reg, diagonal=1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
             return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks, partsScore
         else:
             return self.l2norm(x_pool), self.l2norm(feats)
