@@ -116,7 +116,7 @@ def train(epoch, loader, model, optimizer, device):
         unsup_sum += unsup_part.item()
 
         optimizer.zero_grad()
-        loss_Re = loss_id_real + loss_triplet + part_loss + unsup_part + loss_id_parts #+ S_intra.mean() + svd_loss #+ var.mean()
+        loss_Re = loss_id_real + loss_triplet + part_loss + unsup_part #+ loss_id_parts #+ S_intra.mean() + svd_loss #+ var.mean()
         loss_Re.backward()
         optimizer.step()
 
