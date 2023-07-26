@@ -91,7 +91,7 @@ class SYSUData(data.Dataset):
             partSeg,
             trans,
             (int(img.shape[1]), int(img.shape[0])),
-            flags=cv2.INTER_LINEAR,
+            flags=cv2.INTER_NEAREST,
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=(255))
         return img2, partSeg2
