@@ -142,7 +142,8 @@ class embed_net2(nn.Module):
         self.bottleneck.bias.requires_grad_(False)  # no shift
 
         self.part_num = 7
-        self.classifier = nn.Linear(self.pool_dim + (self.part_num - 1) * 256, class_num, bias=False)
+        # self.pool_dim += (self.part_num - 1) * 256
+        self.classifier = nn.Linear(self.pool_dim, class_num, bias=False)
 
         self.bottleneck.apply(weights_init_kaiming)
         self.classifier.apply(weights_init_classifier)
@@ -159,7 +160,7 @@ class embed_net2(nn.Module):
                                      nn.Softmax())
         self.part = PartModel(self.part_num)
         self.part_descriptor = nn.Sequential(nn.Linear(self.pool_dim, 512), nn.Linear(512, 256))
-        self.pool_dim += (self.part_num - 1) * 256
+
 
     def forward(self, xRGB, xIR, xZ=None, modal=0, with_feature = False):
         if modal == 0:
@@ -214,7 +215,7 @@ class embed_net2(nn.Module):
             x = self.base_resnet(x)
 
         part, partsFeat = self.part(x, x1, x2, x3)
-        part_masks = F.softmax(F.avg_pool2d(part[0][1] + part[0][1], kernel_size=(4, 4)))
+        part_masks = F.softmax(F.avg_pool2d(part[0][1] + part[0][1], kernel_size=(4, 4))).detach()
 
         b, c, h, w = x.shape
         if self.gm_pool  == 'on':
@@ -237,13 +238,13 @@ class embed_net2(nn.Module):
         # maskedFeat /= einops.reduce(part_masks[:, 1:], 'b r h w -> b r 1', 'sum') + 1e-7
 
         partsScore = []
-        feats = [feat_g]
+        feats = feat_g + maskedFeat.sum(dim=1)
         for i in range(0, self.part_num - 1): # 0 is background!
             feat = self.part_descriptor(maskedFeat[:, i])
             partsScore.append(self.clsParts[i](feat))
-            feats.append(feat)
+            # feats.append(feat)
         # feats.append(feat_g)
-        feats = torch.cat(feats, 1)
+        # feats = torch.cat(feats, 1)
 
         if with_feature:
             return feats, self.classifier(feats), part, None, maskedFeat, part_masks, partsScore, x
