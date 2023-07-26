@@ -220,7 +220,7 @@ def contrastive_loss(feats, t=0.07):
     pos_idx = einops.repeat(torch.eye(feats.size(1), dtype=torch.int, device=feats.device), 'i j -> (a i) (b j)', a=feats.size(0), b=feats.size(0))
     pos_idx.fill_diagonal_(0)
     l_pos = torch.gather(scores, 1, pos_idx.nonzero()[:, 1].view(scores.size(0), -1))
-    rand_idx = torch.randint(1, l_pos.size(1), (l_pos.size(0), 1), device=feats.device)
+    # rand_idx = torch.randint(1, l_pos.size(1), (l_pos.size(0), 1), device=feats.device)
     l_pos, _ = l_pos.min(dim=1) #torch.gather(l_pos, 1, rand_idx)
 
     # negative logits: NxK

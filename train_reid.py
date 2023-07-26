@@ -82,14 +82,17 @@ def train(epoch, loader, model, optimizer, device):
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         bs = img1.size(0)
 
-        feat, score, part, loss_reg, partsFeat, part_masks, partsScore = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False)
+        feat, score, part, loss_reg, partsFeat, part_masks, partsScore, featsP = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False)
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]], [part_labels[good_part], edges[good_part]])  #+ loss_reg
         # part_loss = criterionPart(part, [part_labels, edges])
 
         pIndex = torch.arange(partsFeat.shape[1]).to(device)
         # t1 = supCons(partsFeat.transpose(0,1), pIndex)
-        unsup_part = contrastive(partsFeat) #+ t1
+
+        F = einops.rearrange(featsP, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=2)
+        cont_part2 = contrastive(F.transpose(0,1))
+        unsup_part = contrastive(partsFeat) + cont_part2
         # t2 = supCons(partsFeat.reshape(-1, 2048), pIndex.repeat(partsFeat.shape[0]))
 
         _, predicted = score.max(1)
@@ -101,7 +104,7 @@ def train(epoch, loader, model, optimizer, device):
         loss_id_real = torch.nn.functional.cross_entropy(score, labels)
         loss_triplet, _ = triplet_criterion(feat, labels)
 
-        F = einops.rearrange(feat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=2)
+
         # var = F.var(dim=1)
         # mean = F.mean(dim=1)
 

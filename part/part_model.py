@@ -142,7 +142,8 @@ class embed_net2(nn.Module):
         self.bottleneck.bias.requires_grad_(False)  # no shift
 
         self.part_num = 7
-        # self.pool_dim += (self.part_num - 1) * 256
+        self.part_descriptor = nn.Sequential(nn.Linear(self.pool_dim, 512), nn.Linear(512, 256))
+        self.pool_dim += (self.part_num - 1) * 256
         self.classifier = nn.Linear(self.pool_dim, class_num, bias=False)
 
         self.bottleneck.apply(weights_init_kaiming)
@@ -159,7 +160,7 @@ class embed_net2(nn.Module):
                                      nn.Sigmoid(),
                                      nn.Softmax())
         self.part = PartModel(self.part_num)
-        self.part_descriptor = nn.Sequential(nn.Linear(self.pool_dim, 512), nn.Linear(512, 256))
+
 
 
     def forward(self, xRGB, xIR, xZ=None, modal=0, with_feature = False):
@@ -231,20 +232,17 @@ class embed_net2(nn.Module):
             x_pool = x_pool.view(x_pool.size(0), x_pool.size(1))
 
         feat_g = self.bottleneck(x_pool)
-
-
-
         maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:,1:], x) / (h * w)
         # maskedFeat /= einops.reduce(part_masks[:, 1:], 'b r h w -> b r 1', 'sum') + 1e-7
 
         partsScore = []
-        feats = feat_g + maskedFeat.sum(dim=1)
+        featsP = [] # maskedFeat.sum(dim=1)
         for i in range(0, self.part_num - 1): # 0 is background!
             feat = self.part_descriptor(maskedFeat[:, i])
             partsScore.append(self.clsParts[i](feat))
-            # feats.append(feat)
-        # feats.append(feat_g)
-        # feats = torch.cat(feats, 1)
+            featsP.append(feat)
+        featsP = torch.cat(featsP, 1)
+        feats = torch.cat([feat_g, featsP], 1)
 
         if with_feature:
             return feats, self.classifier(feats), part, None, maskedFeat, part_masks, partsScore, x
@@ -253,7 +251,7 @@ class embed_net2(nn.Module):
             masks = part_masks.view(b, self.part_num, w * h)
             loss_reg = None#torch.bmm(masks, masks.permute(0, 2, 1))
             # loss_reg = torch.triu(loss_reg, diagonal=1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
-            return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks, partsScore
+            return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks, partsScore, featsP
         else:
             return self.l2norm(x_pool), self.l2norm(feats)
 

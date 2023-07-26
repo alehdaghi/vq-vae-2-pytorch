@@ -9,6 +9,8 @@ import torch.utils.data as data
 from torch.utils.data import Sampler
 from torchvision.transforms import transforms
 import pickle
+import cv2
+from utils.transforms import get_affine_transform, _box2cs
 
 import torchvision.models.detection.mask_rcnn as mask_rcnn
 
@@ -63,12 +65,36 @@ class SYSUData(data.Dataset):
         if self.part:
             parts1 = self.train_rgb_part[self.cIndex[index]]
             parts2 = self.train_ir_part[self.tIndex[index]]
+            img1, parts1 = self.affine(img1, parts1)
+            img2, parts2 = self.affine(img2, parts2)
             return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2, parts1, parts2
 
         return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2
 
     def __len__(self):
         return len(self.cIndex)
+
+    def affine(self, img, partSeg, sf=0.25, rf=30):
+        person_center, s = _box2cs([0, 0, img.shape[1] - 1, img.shape[0] - 1])
+        s = s * np.clip(np.random.randn() * sf + 1, 1 - sf, 1 + sf)
+        r = np.clip(np.random.randn() * rf, -rf * 2, rf * 2) if random() <= 0.6 else 0
+
+        trans = get_affine_transform(person_center, s, r, img.shape[:2])
+        img2 = cv2.warpAffine(
+            img,
+            trans,
+            (int(img.shape[1]), int(img.shape[0])),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=(0, 0, 0))
+        partSeg2 = cv2.warpAffine(
+            partSeg,
+            trans,
+            (int(img.shape[1]), int(img.shape[0])),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=(255))
+        return img2, partSeg2
 
     @staticmethod
     def rgb2gray(rgb):
