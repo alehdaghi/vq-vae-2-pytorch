@@ -65,8 +65,8 @@ class SYSUData(data.Dataset):
         if self.part:
             parts1 = self.train_rgb_part[self.cIndex[index]]
             parts2 = self.train_ir_part[self.tIndex[index]]
-            img1, parts1 = self.affine(img1, parts1)
-            img2, parts2 = self.affine(img2, parts2)
+            # img1, parts1 = self.affine(img1, parts1)
+            # img2, parts2 = self.affine(img2, parts2)
             return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2, parts1, parts2
 
         return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2
