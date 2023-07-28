@@ -65,8 +65,8 @@ class SYSUData(data.Dataset):
         if self.part:
             parts1 = self.train_rgb_part[self.cIndex[index]]
             parts2 = self.train_ir_part[self.tIndex[index]]
-            # img1, parts1 = self.affine(img1, parts1)
-            # img2, parts2 = self.affine(img2, parts2)
+            img1, parts1 = self.affine(img1, parts1)
+            img2, parts2 = self.affine(img2, parts2)
             return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2, parts1, parts2
 
         return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2
@@ -74,7 +74,7 @@ class SYSUData(data.Dataset):
     def __len__(self):
         return len(self.cIndex)
 
-    def affine(self, img, partSeg, sf=0.25, rf=30):
+    def affine(self, img, partSeg, sf=0.25, rf=15):
         person_center, s = _box2cs([0, 0, img.shape[1] - 1, img.shape[0] - 1])
         s = s * np.clip(np.random.randn() * sf + 1, 1 - sf, 1 + sf)
         r = np.clip(np.random.randn() * rf, -rf * 2, rf * 2) if random() <= 0.6 else 0
