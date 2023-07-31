@@ -71,7 +71,7 @@ class SYSUData(data.Dataset):
             parts = [torch.from_numpy(parts1), torch.from_numpy(parts2)]
             imgs = [TF.to_tensor(img1), TF.to_tensor(img2)]
             for i in range(2):
-                ii, j, h, w = transforms.RandomCrop.get_params(imgs[i], output_size=(imgs[i].shape[1] - 8, imgs[i].shape[2] - 8))
+                ii, j, h, w = transforms.RandomCrop.get_params(imgs[i], output_size=(imgs[i].shape[1] - 12, imgs[i].shape[2] - 12))
                 imgs[i] = TF.crop(imgs[i], ii, j, h, w)
                 parts[i] = TF.crop(parts[i], ii, j, h, w)
                 if random() > 0.4:

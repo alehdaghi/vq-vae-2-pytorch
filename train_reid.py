@@ -181,7 +181,7 @@ def main(args):
             # transforms.ToPILImage(),
             # transforms.CenterCrop(args.size),
             # transforms.Pad(10),
-            # transforms.Resize((args.img_h, args.img_w)),
+            transforms.Resize((args.img_h, args.img_w)),
             # transforms.RandomCrop((args.img_h, args.img_w)),
             # transforms.RandomHorizontalFlip(),
             # transforms.ToTensor(),
