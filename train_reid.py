@@ -79,6 +79,8 @@ def train(epoch, loader, model, optimizer, device):
         imgs = torch.cat((img1, img2), dim=0)
 
         part_labels = torch.cat((p_label1, p_label2), 0).to(device).type(torch.cuda.LongTensor)
+        if part_labels.shape[1] == 1:
+            part_labels = part_labels.squeeze(1)
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
         bs = img1.size(0)
 

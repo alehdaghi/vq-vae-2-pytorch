@@ -13,14 +13,15 @@ import cv2
 from utils.transforms import get_affine_transform, _box2cs
 
 import torchvision.models.detection.mask_rcnn as mask_rcnn
+import torchvision.transforms.functional as TF
 
 
 class SYSUData(data.Dataset):
     transform = transforms.Compose(
         [
-            transforms.ToPILImage(),
+            # transforms.ToPILImage(),
             # transforms.CenterCrop(args.size),
-            transforms.ToTensor(),
+            # transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
@@ -55,6 +56,7 @@ class SYSUData(data.Dataset):
 
         self.transform = transform
         self.num_class = len(self.color_pos)
+        self.jitter = transforms.ColorJitter(brightness=.5, hue=.3)
 
     def __getitem__(self, index):
         img1, target1, cam1 = self.train_color_image[self.cIndex[index]], self.train_color_label[self.cIndex[index]], \
@@ -63,11 +65,27 @@ class SYSUData(data.Dataset):
                               self.train_ir_cam[self.tIndex[index]]
 
         if self.part:
+
             parts1 = self.train_rgb_part[self.cIndex[index]]
             parts2 = self.train_ir_part[self.tIndex[index]]
-            img1, parts1 = self.affine(img1, parts1)
-            img2, parts2 = self.affine(img2, parts2)
-            return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2, parts1, parts2
+            parts = [torch.from_numpy(parts1), torch.from_numpy(parts2)]
+            imgs = [TF.to_tensor(img1), TF.to_tensor(img2)]
+            for i in range(2):
+                ii, j, h, w = transforms.RandomCrop.get_params(imgs[i], output_size=(imgs[i].shape[1] - 8, imgs[i].shape[2] - 8))
+                imgs[i] = TF.crop(imgs[i], ii, j, h, w)
+                parts[i] = TF.crop(parts[i], ii, j, h, w)
+                if random() > 0.4:
+                    imgs[i] = self.jitter(imgs[i])
+                if random() > 0.5:
+                    imgs[i] = TF.hflip(imgs[i])
+                    parts[i] = TF.hflip(parts[i])
+                if random() > 0.5:
+                    imgs[i] = TF.vflip(imgs[i])
+                    parts[i] = TF.vflip(parts[i])
+
+            # img1, parts1 = self.affine(img1, parts1)
+            # img2, parts2 = self.affine(img2, parts2)
+            return self.transform(imgs[0]), self.transform(imgs[1]), target1, target2, cam1, cam2, parts[0], parts[1]
 
         return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2
 
