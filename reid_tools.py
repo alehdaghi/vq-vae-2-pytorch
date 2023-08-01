@@ -41,7 +41,7 @@ def load_data(args, test_batch=50, data_path='../Datasets/SYSU-MM01/', mode = 'V
 
     # testing set
     query_img, query_label, query_cam = process_sysu(data_path, data='query', mode = mode)
-    gall_img, gall_label, gall_cam = process_sysu(data_path, data='gallery', mode = mode, single_shot=False)
+    gall_img, gall_label, gall_cam = process_sysu(data_path, data='gallery', mode = mode, single_shot=True)
     nquery = len(query_label)
     ngall = len(gall_label)
 
