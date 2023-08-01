@@ -266,7 +266,7 @@ def main(args):
         )
 
         train(i, loader, model, optimizer, device)
-        if i % 4 == 0:
+        if i % 1 == 0:
             mAp = validate(0, model, args=args, mode='all')
             writer.add_scalar("mAP/eval", mAp, i)
             if mAp > best_mAp:
