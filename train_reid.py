@@ -91,7 +91,7 @@ def train(epoch, loader, model, optimizer, device):
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
 
 
-        feat, score, part, loss_reg, partsFeat, part_masks, partsScore, featsP = model.person_id(xRGB=gray, xIR=img2, modal=0, with_feature=False, xZ=gray)
+        feat, score, part, loss_reg, partsFeat, part_masks, partsScore, featsP = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False, xZ=gray)
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]], [part_labels[good_part], edges[good_part]])  #+ loss_reg
         # part_loss = criterionPart(part, [part_labels, edges])
