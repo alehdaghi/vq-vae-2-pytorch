@@ -74,8 +74,8 @@ class SYSUData(data.Dataset):
                 ii, j, h, w = transforms.RandomCrop.get_params(imgs[i], output_size=(imgs[i].shape[1] - 12, imgs[i].shape[2] - 12))
                 imgs[i] = TF.crop(imgs[i], ii, j, h, w)
                 parts[i] = TF.crop(parts[i], ii, j, h, w)
-                if random() > 0.4:
-                    imgs[i] = self.jitter(imgs[i])
+                # if random() > 0.4:
+                #     imgs[i] = self.jitter(imgs[i])
                 if random() > 0.5:
                     imgs[i] = TF.hflip(imgs[i])
                     parts[i] = TF.hflip(parts[i])
