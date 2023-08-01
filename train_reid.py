@@ -82,16 +82,16 @@ def train(epoch, loader, model, optimizer, device):
 
         label1 = label1.to(device)
         label2 = label2.to(device)
-        labels = torch.cat((label1, label2, label1), 0)
-        imgs = torch.cat((img1, img2, gray), dim=0)
+        labels = torch.cat((label1,), 0)
+        imgs = torch.cat((img1,), dim=0)
 
-        part_labels = torch.cat((p_label1, p_label2, p_label1), 0).to(device).type(torch.cuda.LongTensor)
+        part_labels = torch.cat((p_label1,), 0).to(device).type(torch.cuda.LongTensor)
         if part_labels.shape[1] == 1:
             part_labels = part_labels.squeeze(1)
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
 
 
-        feat, score, part, loss_reg, partsFeat, part_masks, partsScore, featsP = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False, xZ=gray)
+        feat, score, part, loss_reg, partsFeat, part_masks, partsScore, featsP = model.person_id(xRGB=gray, xIR=img2, modal=1, with_feature=False, xZ=gray)
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]], [part_labels[good_part], edges[good_part]])  #+ loss_reg
         # part_loss = criterionPart(part, [part_labels, edges])
@@ -111,18 +111,18 @@ def train(epoch, loader, model, optimizer, device):
         loss_id_parts = sum([torch.nn.functional.cross_entropy(ps, labels) / 6 for ps in partsScore])
 
         loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-        # loss_triplet, _ = triplet_criterion(feat, labels)
+        loss_triplet, _ = triplet_criterion(feat, labels)
 
-        color_feat, thermal_feat, gray_feat = torch.split(feat, label1.shape[0])
-        color_label, thermal_label, gray_label = torch.split(labels, label1.shape[0])
-        loss_tri_color = cross_triplet_creiteron(color_feat, thermal_feat, gray_feat,
-                                                 color_label, thermal_label, gray_label)
-        loss_tri_thermal = cross_triplet_creiteron(thermal_feat, gray_feat, color_feat,
-                                                   thermal_label, gray_label, color_label)
-        loss_tri_gray = cross_triplet_creiteron(gray_feat, color_feat, thermal_feat,
-                                                gray_label, color_label, thermal_label)
-        loss_triplet = (loss_tri_color + loss_tri_thermal + loss_tri_gray) / 3
-        loss_color2gray = 10 * reconst_loss(color_feat, gray_feat)
+        # color_feat, thermal_feat, gray_feat = torch.split(feat, label1.shape[0])
+        # color_label, thermal_label, gray_label = torch.split(labels, label1.shape[0])
+        # loss_tri_color = cross_triplet_creiteron(color_feat, thermal_feat, gray_feat,
+        #                                          color_label, thermal_label, gray_label)
+        # loss_tri_thermal = cross_triplet_creiteron(thermal_feat, gray_feat, color_feat,
+        #                                            thermal_label, gray_label, color_label)
+        # loss_tri_gray = cross_triplet_creiteron(gray_feat, color_feat, thermal_feat,
+        #                                         gray_label, color_label, thermal_label)
+        # loss_triplet = (loss_tri_color + loss_tri_thermal + loss_tri_gray) / 3
+        # loss_color2gray = 10 * reconst_loss(color_feat, gray_feat)
 
 
         # var = F.var(dim=1)
@@ -139,7 +139,7 @@ def train(epoch, loader, model, optimizer, device):
         unsup_sum += unsup_part.item()
 
         optimizer.zero_grad()
-        loss_Re = loss_id_real + loss_triplet + part_loss + unsup_part + loss_id_parts + loss_color2gray #+ S_intra.mean() + svd_loss #+ var.mean()
+        loss_Re = loss_id_real + loss_triplet + part_loss + unsup_part + loss_id_parts #+ loss_color2gray #+ S_intra.mean() + svd_loss #+ var.mean()
         loss_Re.backward()
         optimizer.step()
 
@@ -243,10 +243,10 @@ def main(args):
     cls_params = list(model.person_id.bottleneck.parameters()) + list(model.person_id.classifier.parameters())
     # optimizer = optim.Adam(base_params, lr=args.lr)
 
-    optimizer = optim.Adam([
-        {'params': base_params, 'lr': args.lr * 0.01},
-        {'params': cls_params, 'lr': args.lr},
-    ], weight_decay=5e-4)
+    optimizer = optim.SGD([
+        {'params': base_params, 'lr': args.lr_F * 0.01},
+        {'params': cls_params, 'lr': args.lr_F},
+    ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
     scheduler = None
     if args.sched == "cycle":
