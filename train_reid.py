@@ -243,10 +243,10 @@ def main(args):
     cls_params = list(model.person_id.bottleneck.parameters()) + list(model.person_id.classifier.parameters())
     # optimizer = optim.Adam(base_params, lr=args.lr)
 
-    optimizer = optim.SGD([
-        {'params': base_params, 'lr': args.lr_F * 0.01},
-        {'params': cls_params, 'lr': args.lr_F},
-    ], weight_decay=5e-4, momentum=0.9, nesterov=True)
+    optimizer = optim.Adam([
+        {'params': base_params, 'lr': args.lr * 0.01},
+        {'params': cls_params, 'lr': args.lr},
+    ], weight_decay=5e-4)
 
     scheduler = None
     if args.sched == "cycle":
