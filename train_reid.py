@@ -83,7 +83,7 @@ def train(epoch, loader, model, optimizer, device):
         label1 = label1.to(device)
         label2 = label2.to(device)
         labels = torch.cat((label1, label2, label1), 0)
-        imgs = torch.cat((img1, img2), dim=0)
+        imgs = torch.cat((img1, img2, gray), dim=0)
 
         part_labels = torch.cat((p_label1, p_label2, p_label1), 0).to(device).type(torch.cuda.LongTensor)
         if part_labels.shape[1] == 1:
