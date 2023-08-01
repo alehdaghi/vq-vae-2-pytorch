@@ -7,6 +7,9 @@ from torchvision import transforms
 from scipy.spatial.distance import cdist
 
 from data_loader import TestData, process_sysu
+from torchvision import utils
+
+from part.criterion import contrastive_loss
 
 gall_loader, query_loader = None, None
 query_img, query_label, query_ca = [None] * 3
@@ -20,6 +23,11 @@ transform_test = transforms.Compose([
     transforms.ToTensor(),
     normalize,
 ])
+invTrans = transforms.Compose([
+    transforms.Normalize(mean=[0., 0., 0.], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]),
+    transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1., 1., 1.]),
+])
+
 
 
 nquery, ngall = 0, 0
@@ -33,7 +41,7 @@ def load_data(args, test_batch=50, data_path='../Datasets/SYSU-MM01/', mode = 'V
 
     # testing set
     query_img, query_label, query_cam = process_sysu(data_path, data='query', mode = mode)
-    gall_img, gall_label, gall_cam = process_sysu(data_path, data='gallery', mode = mode, single_shot=True)
+    gall_img, gall_label, gall_cam = process_sysu(data_path, data='gallery', mode = mode, single_shot=False)
     nquery = len(query_label)
     ngall = len(gall_label)
 
@@ -52,7 +60,7 @@ def test(epoch, net, test_mode = [1, 2]):
     # switch to evaluation mode
     pool_dim = net.person_id.pool_dim
     net.eval()
-    print('Extracting Gallery Feature...')
+    # print('Extracting Gallery Feature...')
     start = time.time()
     ptr = 0
     gall_feat = np.zeros((ngall, pool_dim))
@@ -63,17 +71,23 @@ def test(epoch, net, test_mode = [1, 2]):
             batch_num = input.size(0)
             input = input.cuda()
             # input = net.encAndDec(input)
-            _, feat_att = net.person_id(input, input, modal=test_mode[0])
+            _, feat_att, part, pf = net.person_id(input, input, modal=test_mode[0])
+            h, w = part[0][1].shape[2], part[0][1].shape[3]
+            img = torch.nn.functional.interpolate(input, size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
+            pModel = (torch.argmax(part[0][1], dim=1) / 6).unsqueeze(1).unsqueeze(1).expand(-1, -1, 3, -1, -1)
+            sample = torch.cat([invTrans(img), pModel], dim=1).view(-1, 3, h, w)
+            utils.save_image(sample, f"part_gal.png", normilized=True,  nrow=2)
+            print(contrastive_loss(pf))
             # gall_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             gall_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
             g_l[ptr:ptr+batch_num] = label
             ptr = ptr + batch_num
 
-    print('Extracting Time:\t {:.3f}'.format(time.time() - start))
+    # print('Extracting Time:\t {:.3f}'.format(time.time() - start))
 
     # switch to evaluation
 
-    print('Extracting Query Feature...')
+    # print('Extracting Query Feature...')
     start = time.time()
     ptr = 0
     # query_feat = np.zeros((nquery, pool_dim))
@@ -93,7 +107,7 @@ def test(epoch, net, test_mode = [1, 2]):
             # query_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             query_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
             ptr = ptr + batch_num
-    print('Extracting Time:\t {:.3f}'.format(time_inference))
+    # print('Extracting Time:\t {:.3f}'.format(time_inference))
     #exit(0)
     start = time.time()
     # compute the similarity
@@ -104,7 +118,7 @@ def test(epoch, net, test_mode = [1, 2]):
         distmat_att = -calc_dist(query_feat_att, gall_feat_att)
 
     cmc_att, mAP_att, mINP_att = eval_sysu(-distmat_att, query_label, g_l, query_cam, gall_cam)
-    print('Evaluation Time:\t {:.3f}'.format(time.time() - start))
+    # print('Evaluation Time:\t {:.3f}'.format(time.time() - start))
 
 
     return cmc_att, mAP_att, mINP_att
