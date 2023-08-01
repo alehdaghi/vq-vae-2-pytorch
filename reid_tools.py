@@ -71,13 +71,14 @@ def test(epoch, net, test_mode = [1, 2]):
             batch_num = input.size(0)
             input = input.cuda()
             # input = net.encAndDec(input)
-            _, feat_att, part, pf = net.person_id(input, input, modal=test_mode[0])
-            h, w = part[0][1].shape[2], part[0][1].shape[3]
-            img = torch.nn.functional.interpolate(input, size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
-            pModel = (torch.argmax(part[0][1], dim=1) / 6).unsqueeze(1).unsqueeze(1).expand(-1, -1, 3, -1, -1)
-            sample = torch.cat([invTrans(img), pModel], dim=1).view(-1, 3, h, w)
-            utils.save_image(sample, f"part_gal.png", normilized=True,  nrow=2)
-            print(contrastive_loss(pf))
+            _, feat_att = net.person_id(input, input, modal=test_mode[0])
+            # _, feat_att, part, pf = net.person_id(input, input, modal=test_mode[0])
+            # h, w = part[0][1].shape[2], part[0][1].shape[3]
+            # img = torch.nn.functional.interpolate(input, size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
+            # pModel = (torch.argmax(part[0][1], dim=1) / 6).unsqueeze(1).unsqueeze(1).expand(-1, -1, 3, -1, -1)
+            # sample = torch.cat([invTrans(img), pModel], dim=1).view(-1, 3, h, w)
+            # utils.save_image(sample, f"part_gal.png", normilized=True,  nrow=2)
+            # print(contrastive_loss(pf))
             # gall_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
             gall_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
             g_l[ptr:ptr+batch_num] = label
