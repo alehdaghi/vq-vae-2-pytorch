@@ -14,7 +14,7 @@ from torchvision import datasets, transforms, utils
 from tqdm import tqdm
 
 from data_loader import SYSUData
-from loss import TripletLoss, TripletLoss_WRT
+from loss import TripletLoss, TripletLoss_WRT, CrossTripletLoss
 from model import ModelAdaptive, ModelAdaptive_Deep, embed_net
 from part.criterion import CriterionAll, generate_edge_tensor, contrastive_loss
 from part.sup_con_loss import SupConLoss
@@ -46,7 +46,9 @@ def train(epoch, loader, model, optimizer, device):
 
     criterion = nn.MSELoss()
     triplet_criterion = TripletLoss()
+    cross_triplet_creiteron = CrossTripletLoss(0.3)
     ranking_loss = nn.MarginRankingLoss(margin=1)
+    reconst_loss = nn.MSELoss()
 
     criterionPart = CriterionAll(num_classes=7)
     contrastive = contrastive_loss
@@ -70,21 +72,26 @@ def train(epoch, loader, model, optimizer, device):
 
     for i, (img1, img2, label1, label2, camera1, camera2, p_label1, p_label2) in enumerate(loader):
         # vq_vae, person_id =  model['vq_vae'], model['person_id']
-
+        bs = img1.size(0)
         img1 = img1.to(device)
         img2 = img2.to(device)
+
+        w = torch.rand(bs, 3).cuda() + 0.01
+        w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
+        gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
+
         label1 = label1.to(device)
         label2 = label2.to(device)
-        labels = torch.cat((label1, label2), 0)
+        labels = torch.cat((label1, label2, label1), 0)
         imgs = torch.cat((img1, img2), dim=0)
 
-        part_labels = torch.cat((p_label1, p_label2), 0).to(device).type(torch.cuda.LongTensor)
+        part_labels = torch.cat((p_label1, p_label2, p_label1), 0).to(device).type(torch.cuda.LongTensor)
         if part_labels.shape[1] == 1:
             part_labels = part_labels.squeeze(1)
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
-        bs = img1.size(0)
 
-        feat, score, part, loss_reg, partsFeat, part_masks, partsScore, featsP = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False)
+
+        feat, score, part, loss_reg, partsFeat, part_masks, partsScore, featsP = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False, xZ=gray)
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]], [part_labels[good_part], edges[good_part]])  #+ loss_reg
         # part_loss = criterionPart(part, [part_labels, edges])
@@ -104,7 +111,18 @@ def train(epoch, loader, model, optimizer, device):
         loss_id_parts = sum([torch.nn.functional.cross_entropy(ps, labels) / 6 for ps in partsScore])
 
         loss_id_real = torch.nn.functional.cross_entropy(score, labels)
-        loss_triplet, _ = triplet_criterion(feat, labels)
+        # loss_triplet, _ = triplet_criterion(feat, labels)
+
+        color_feat, thermal_feat, gray_feat = torch.split(feat, label1.shape[0])
+        color_label, thermal_label, gray_label = torch.split(labels, label1.shape[0])
+        loss_tri_color = cross_triplet_creiteron(color_feat, thermal_feat, gray_feat,
+                                                 color_label, thermal_label, gray_label)
+        loss_tri_thermal = cross_triplet_creiteron(thermal_feat, gray_feat, color_feat,
+                                                   thermal_label, gray_label, color_label)
+        loss_tri_gray = cross_triplet_creiteron(gray_feat, color_feat, thermal_feat,
+                                                gray_label, color_label, thermal_label)
+        loss_triplet = (loss_tri_color + loss_tri_thermal + loss_tri_gray) / 3
+        loss_color2gray = 10 * reconst_loss(color_feat, gray_feat)
 
 
         # var = F.var(dim=1)
@@ -121,7 +139,7 @@ def train(epoch, loader, model, optimizer, device):
         unsup_sum += unsup_part.item()
 
         optimizer.zero_grad()
-        loss_Re = loss_id_real + loss_triplet + part_loss + unsup_part + loss_id_parts #+ S_intra.mean() + svd_loss #+ var.mean()
+        loss_Re = loss_id_real + loss_triplet + part_loss + unsup_part + loss_id_parts + loss_color2gray #+ S_intra.mean() + svd_loss #+ var.mean()
         loss_Re.backward()
         optimizer.step()
 
