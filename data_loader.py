@@ -85,7 +85,7 @@ class SYSUData(data.Dataset):
 
 
                 if random() > 0.5:
-                    v = torch.rand(3).cuda() + 0.01
+                    v = torch.rand(3).to(imgs[i].device) + 0.01
                     v = v / (abs(v.sum(dim=0, keepdim=True)) + 0.01)
                     ii, j, h, w, v = transforms.RandomErasing.get_params(imgs[i], scale=(0.02, 0.33), ratio=(0.3, 3.3), value=v)
                     imgs[i] = TF.erase(imgs[i], ii, j, h, w, v)
