@@ -83,6 +83,14 @@ class SYSUData(data.Dataset):
                     imgs[i] = TF.vflip(imgs[i])
                     parts[i] = TF.vflip(parts[i])
 
+
+                if random() > 0.5:
+                    v = torch.rand(3).cuda() + 0.01
+                    v = v / (abs(v.sum(dim=0, keepdim=True)) + 0.01)
+                    ii, j, h, w, v = transforms.RandomErasing.get_params(imgs[i], scale=(0.02, 0.33), ratio=(0.3, 3.3), value=v)
+                    imgs[i] = TF.erase(imgs[i], ii, j, h, w, v)
+                    parts[i] = TF.erase(parts[i], ii, j, h, w, 255)
+
             # img1, parts1 = self.affine(img1, parts1)
             # img2, parts2 = self.affine(img2, parts2)
             return self.transform(imgs[0]), self.transform(imgs[1]), target1, target2, cam1, cam2, parts[0], parts[1]

@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch import nn, optim
 import torch.nn.functional as Fn
+from torch.optim.lr_scheduler import MultiStepLR
 from torch.utils.data import DataLoader
 import einops
 
@@ -248,15 +249,7 @@ def main(args):
         {'params': cls_params, 'lr': args.lr_F},
     ], weight_decay=5e-4, momentum=0.9, nesterov=True)
 
-    scheduler = None
-    if args.sched == "cycle":
-        scheduler = CycleScheduler(
-            optimizer,
-            args.lr,
-            n_iter=len(dataset) * args.epoch,
-            momentum=None,
-            warmup_proportion=0.05,
-        )
+    scheduler = MultiStepLR(optimizer, milestones=[20, 40, 60, 100], gamma=0.1)
 
     best_mAp , best_epoch = 0 , 0
     for i in range(args.start, args.epoch):
