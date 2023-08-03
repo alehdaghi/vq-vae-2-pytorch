@@ -32,104 +32,65 @@ invTrans = transforms.Compose([
 
 nquery, ngall = 0, 0
 
-def load_data(args, test_batch=50, data_path='../Datasets/SYSU-MM01/', mode = 'Vis'):
+def load_data(args, test_batch=50, data='query', mode='all', single=True, data_path='../Datasets/SYSU-MM01/'):
+    imgs, labels, cams = process_sysu(data_path, data=data, mode = mode, single_shot=single)
+    n = len(imgs)
+    dataset = TestData(imgs, labels, cams, transform=transform_test, img_size=(img_w, img_h))
+    loader = torch.utils.data.DataLoader(dataset, batch_size=test_batch, shuffle=False, num_workers=0)
+    print('  {}    | {:5d} | {:8d}'.format(data, len(np.unique(labels)), n))
+    return loader, n, imgs, labels, cams
 
-    global gall_loader, query_loader, \
-        nquery, ngall, query_img,\
-        query_label, query_cam, gall_img, gall_label, gall_cam
-
-
-    # testing set
-    query_img, query_label, query_cam = process_sysu(data_path, data='query', mode = mode)
-    gall_img, gall_label, gall_cam = process_sysu(data_path, data='gallery', mode = mode, single_shot=True)
-    nquery = len(query_label)
-    ngall = len(gall_label)
-
-    gallset = TestData(gall_img, gall_label, gall_cam, transform=transform_test, img_size=(img_w, img_h))
-    queryset = TestData(query_img, query_label, query_cam, transform=transform_test, img_size=(img_w, img_h))
-
-    # testing data loader
-    gall_loader = data.DataLoader(gallset, batch_size=test_batch, shuffle=False, num_workers=args.workers)
-    query_loader = data.DataLoader(queryset, batch_size=test_batch, shuffle=False, num_workers=args.workers)
-
-    print('  query    | {:5d} | {:8d}'.format(len(np.unique(query_label)), nquery))
-    print('  gallery  | {:5d} | {:8d}'.format(len(np.unique(gall_label)), ngall))
-
-dist_type='find_neighbour'
-def test(epoch, net, test_mode = [1, 2]):
-    # switch to evaluation mode
-    pool_dim = net.person_id.pool_dim
+def ext_feat(net, loader, modal=0):
+    pool_dim = net.pool_dim
     net.eval()
-    # print('Extracting Gallery Feature...')
+    print('Extracting Feature...')
     start = time.time()
     ptr = 0
-    gall_feat = np.zeros((ngall, pool_dim))
-    gall_feat_att = np.zeros((ngall, pool_dim))
-    g_l = np.zeros(ngall)
+#     feat = np.zeros((ngall, pool_dim))
+    n = len(loader.dataset)
+    feats = np.zeros((n, pool_dim))
+    labels = np.zeros(n)
+    cams = np.zeros(n)
     with torch.no_grad():
-        for batch_idx, (input, label, cam) in enumerate(gall_loader):
+        for batch_idx, (input, label, cam) in enumerate(loader):
             batch_num = input.size(0)
             input = input.cuda()
-            # input = net.encAndDec(input)
-            _, feat_att = net.person_id(input, input, modal=test_mode[0])
-            # _, feat_att, part, pf = net.person_id(input, input, modal=test_mode[0])
-            # h, w = part[0][1].shape[2], part[0][1].shape[3]
-            # img = torch.nn.functional.interpolate(input, size=(h, w), mode='bilinear', align_corners=True).unsqueeze(1)
-            # pModel = (torch.argmax(part[0][1], dim=1) / 6).unsqueeze(1).unsqueeze(1).expand(-1, -1, 3, -1, -1)
-            # sample = torch.cat([invTrans(img), pModel], dim=1).view(-1, 3, h, w)
-            # utils.save_image(sample, f"part_gal.png", normilized=True,  nrow=2)
-            # print(contrastive_loss(pf))
-            # gall_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
-            gall_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
-            g_l[ptr:ptr+batch_num] = label
+            _, feat_att = net(input, input, modal=modal)
+            feats[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()[:, :pool_dim]
+            labels[ptr:ptr+batch_num] = label
+            cams[ptr:ptr + batch_num] = cam
             ptr = ptr + batch_num
+    print('Extracting Time:\t {:.3f}'.format(time.time() - start))
+    return feats, labels, cams
 
+dist_type='find_neighbour'
+def test(epoch, net, gall_loader, query_loader, test_mode = [1, 2]):
+    # switch to evaluation mode
+    gall_feat_att, g_l, gall_cam = ext_feat(net, gall_loader, modal=test_mode[0])
     # print('Extracting Time:\t {:.3f}'.format(time.time() - start))
-
+    query_feat_att, q_l, query_cam = ext_feat(net, query_loader, modal=test_mode[1])
     # switch to evaluation
-
-    # print('Extracting Query Feature...')
-    start = time.time()
-    ptr = 0
-    # query_feat = np.zeros((nquery, pool_dim))
-    query_feat_att = np.zeros((nquery, pool_dim))
-    time_inference = 0
-    with torch.no_grad():
-        for batch_idx, (input, label, cam) in enumerate(query_loader):
-            batch_num = input.size(0)
-            input = Variable(input.cuda())
-
-            start1 = time.time()
-            # input = net.encAndDec(input)
-            feat, feat_att = net.person_id(input, input, modal=test_mode[1])
-            time_inference += (time.time() - start1)
-            #print('Extracting Time:\t {:.3f} len={:d}'.format(time.time() - start1, len(input)))
-
-            # query_feat[ptr:ptr + batch_num, :] = feat.detach().cpu().numpy()
-            query_feat_att[ptr:ptr + batch_num, :] = feat_att.detach().cpu().numpy()
-            ptr = ptr + batch_num
-    # print('Extracting Time:\t {:.3f}'.format(time_inference))
-    #exit(0)
-    start = time.time()
-    # compute the similarity
-
     if (dist_type == 'cosine'):
         distmat_att = np.matmul(query_feat_att, np.transpose(gall_feat_att))
     else:
         distmat_att = -calc_dist(query_feat_att, gall_feat_att)
 
-    cmc_att, mAP_att, mINP_att = eval_sysu(-distmat_att, query_label, g_l, query_cam, gall_cam)
+    cmc_att, mAP_att, mINP_att = eval_sysu(-distmat_att, q_l, g_l, query_cam, gall_cam)
     # print('Evaluation Time:\t {:.3f}'.format(time.time() - start))
-
-
     return cmc_att, mAP_att, mINP_att
 
-def validate(epoch, net, args, mode = 'Vis'):
-    model = net.person_id
-    global best_acc, best_epoch
 
-    if gall_loader is None:
-        load_data(args, mode=mode)
+def validate(epoch, net, args, mode = 'Vis', randGallery=False):
+
+    global best_acc, best_epoch
+    global gall_loader, query_loader, nquery, ngall
+
+    if gall_loader is None or randGallery is True:
+        gall_loader, ngall, _, _, _ = load_data(args, data='gallery', mode=mode, single=True)
+
+    if query_loader is None:
+        query_loader, nquery, _, _, _ = load_data(args, data='query', mode=mode)
+
     if mode == 'Vis':
         test_mode = [1, 1]
     elif mode == 'Ir':
@@ -137,7 +98,7 @@ def validate(epoch, net, args, mode = 'Vis'):
     else:
         test_mode = [1, 2]
 
-    cmc_att, mAP_att, mINP_att = test(epoch, net, test_mode)
+    cmc_att, mAP_att, mINP_att = test(epoch, net, gall_loader, query_loader, test_mode)
     # save model
     # if max(mAP, mAP_att) > best_acc:  # not the real best for sysu-mm01
     #     best_acc = max(mAP, mAP_att)

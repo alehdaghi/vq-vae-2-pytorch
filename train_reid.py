@@ -262,7 +262,7 @@ def main(args):
         train(i, loader, model, optimizer, device)
         scheduler.step()
         if i % 4 == 0 or i > 10:
-            mAp = validate(0, model, args=args, mode='all')
+            mAp = validate(0, model.person_id, args=args, mode='all')
             writer.add_scalar("mAP/eval", mAp, i)
             if mAp > best_mAp:
                 torch.save(model.person_id.state_dict(), f"checkpoint/reid_best_part-P.pt")
