@@ -63,7 +63,7 @@ def ext_feat(net, loader, modal=0):
     print('Extracting Time:\t {:.3f}'.format(time.time() - start))
     return feats, labels, cams
 
-dist_type='find_neighbour'
+dist_type='cosine'
 def test(epoch, net, gall_loader, query_loader, test_mode = [1, 2]):
     # switch to evaluation mode
     gall_feat_att, g_l, gall_cam = ext_feat(net, gall_loader, modal=test_mode[0])
@@ -79,6 +79,35 @@ def test(epoch, net, gall_loader, query_loader, test_mode = [1, 2]):
     # print('Evaluation Time:\t {:.3f}'.format(time.time() - start))
     return cmc_att, mAP_att, mINP_att
 
+def testAll(epoch, net, gall_loader, query_loader, test_mode = [1, 2]):
+    query_feat_att, q_l, query_cam = ext_feat(net, query_loader, modal=test_mode[1])
+
+    cmc, mAP, mINP = None, None, None
+    for i in range(10):
+        gall_loader, ngall, _, _, _ = load_data(args=None, data='gallery', mode='all', single=True)
+        gall_feat_att, g_l, gall_cam = ext_feat(net, gall_loader, modal=test_mode[0])
+        # switch to evaluation
+        if (dist_type == 'cosine'):
+            distmat_att = np.matmul(query_feat_att, np.transpose(gall_feat_att))
+        else:
+            distmat_att = -calc_dist(query_feat_att, gall_feat_att)
+
+        cmc_att, mAP_att, mINP_att = eval_sysu(-distmat_att, q_l, g_l, query_cam, gall_cam)
+        if cmc is None :
+            cmc, mAP, mINP = cmc_att, mAP_att, mINP_att
+        else:
+            cmc += cmc_att
+            mAP += mAP_att
+            mINP += mINP_att
+        print('iter:{}:   Rank-1: {:.2%} | Rank-5: {:.2%} | Rank-10: {:.2%}| Rank-20: {:.2%}| mAP: {:.2%}| mINP: {:.2%}'.format( i+1,
+            cmc_att[0], cmc_att[4], cmc_att[9], cmc_att[19], mAP_att, mINP_att))
+    cmc /=10
+    mAP /= 10
+    mINP /=10
+    print('All:   Rank-1: {:.2%} | Rank-5: {:.2%} | Rank-10: {:.2%}| Rank-20: {:.2%}| mAP: {:.2%}| mINP: {:.2%}'.format(
+        cmc[0], cmc[4], cmc[9], cmc[19], mAP, mINP))
+    return cmc, mAP, mINP
+
 
 def validate(epoch, net, args, mode = 'Vis', randGallery=False):
 
@@ -86,7 +115,7 @@ def validate(epoch, net, args, mode = 'Vis', randGallery=False):
     global gall_loader, query_loader, nquery, ngall
 
     if gall_loader is None or randGallery is True:
-        gall_loader, ngall, _, _, _ = load_data(args, data='gallery', mode=mode, single=True)
+        gall_loader, ngall, _, _, _ = load_data(args, data='gallery', mode=mode, single=False)
 
     if query_loader is None:
         query_loader, nquery, _, _, _ = load_data(args, data='query', mode=mode)
