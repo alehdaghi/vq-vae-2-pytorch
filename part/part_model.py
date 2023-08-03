@@ -142,9 +142,10 @@ class embed_net2(nn.Module):
         self.bottleneck.bias.requires_grad_(False)  # no shift
 
         self.part_num = 7
-        self.part_descriptor = nn.Sequential(nn.Linear(self.pool_dim, 512), nn.Linear(512, 256))
+        self.part_descriptor = nn.ModuleList([nn.Sequential(nn.Linear(self.pool_dim, 512), nn.Linear(512, 256)) for i in range(self.part_num-1) ])
         self.pool_dim += (self.part_num - 1) * 256
         self.classifier = nn.Linear(self.pool_dim, class_num, bias=False)
+        self.classifierP = nn.Linear((self.part_num - 1) * 256, class_num, bias=False)
 
         self.bottleneck.apply(weights_init_kaiming)
         self.classifier.apply(weights_init_classifier)
@@ -216,7 +217,7 @@ class embed_net2(nn.Module):
             x = self.base_resnet(x)
 
         part, partsFeat = self.part(x, x1, x2, x3)
-        part_masks = F.softmax(F.avg_pool2d(part[0][1] + part[0][1], kernel_size=(4, 4))).detach()
+        part_masks = F.softmax(F.avg_pool2d(part[0][1] + part[0][1], kernel_size=(4, 4)))
 
         b, c, h, w = x.shape
         if self.gm_pool  == 'on':
@@ -238,10 +239,11 @@ class embed_net2(nn.Module):
         partsScore = []
         featsP = [] # maskedFeat.sum(dim=1)
         for i in range(0, self.part_num - 1): # 0 is background!
-            feat = self.part_descriptor(maskedFeat[:, i])
+            feat = self.part_descriptor[i](maskedFeat[:, i])
             partsScore.append(self.clsParts[i](feat))
             featsP.append(feat)
         featsP = torch.cat(featsP, 1)
+        scoreP = self.classifierP(featsP)
         feats = torch.cat([feat_g, featsP], 1)
 
         if with_feature:
@@ -251,7 +253,7 @@ class embed_net2(nn.Module):
             masks = part_masks.view(b, self.part_num, w * h)
             loss_reg = None#torch.bmm(masks, masks.permute(0, 2, 1))
             # loss_reg = torch.triu(loss_reg, diagonal=1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
-            return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks, partsScore, featsP
+            return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks, partsScore, featsP, scoreP
         else:
             return self.l2norm(x_pool), self.l2norm(feats)
 

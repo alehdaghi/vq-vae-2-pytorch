@@ -92,7 +92,7 @@ def train(epoch, loader, model, optimizer, device):
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
 
 
-        feat, score, part, loss_reg, partsFeat, part_masks, partsScore, featsP = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False, xZ=gray)
+        feat, score, part, loss_reg, partsFeat, part_masks, partsScore, featsP, scoreP = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False, xZ=gray)
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]], [part_labels[good_part], edges[good_part]])  #+ loss_reg
         # part_loss = criterionPart(part, [part_labels, edges])
@@ -109,7 +109,8 @@ def train(epoch, loader, model, optimizer, device):
         correct += (predicted.eq(labels).sum().item())
 
 
-        loss_id_parts = sum([torch.nn.functional.cross_entropy(ps, labels) / 6 for ps in partsScore])
+        loss_id_parts = sum([torch.nn.functional.cross_entropy(ps, labels) / 6 for ps in partsScore]) + \
+                        torch.nn.functional.cross_entropy(scoreP, labels)
 
         loss_id_real = torch.nn.functional.cross_entropy(score, labels)
         # loss_triplet, _ = triplet_criterion(feat, labels)
@@ -264,15 +265,15 @@ def main(args):
             mAp = validate(0, model, args=args, mode='all')
             writer.add_scalar("mAP/eval", mAp, i)
             if mAp > best_mAp:
-                torch.save(model.person_id.state_dict(), f"checkpoint/reid_best_part.pt")
+                torch.save(model.person_id.state_dict(), f"checkpoint/reid_best_part-P.pt")
                 best_epoch = i
                 best_mAp = mAp
             print("best mAP {:.2%} epoch {}".format(best_mAp, best_epoch))
 
         model.person_id.train()
-        torch.save(model.person_id.state_dict(), f"checkpoint/reid_last_part.pt")
+        torch.save(model.person_id.state_dict(), f"checkpoint/reid_last_part-P.pt")
         if i % 10 == 0 and dist.is_primary():
-            torch.save(model.person_id.state_dict(), f"checkpoint/reid_{str(i + 1).zfill(3)}_part.pt")
+            torch.save(model.person_id.state_dict(), f"checkpoint/reid_{str(i + 1).zfill(3)}_part-P.pt")
 
 
 
