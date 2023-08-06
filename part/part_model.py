@@ -153,7 +153,7 @@ class embed_net2(nn.Module):
         self.gm_pool = gm_pool
 
 
-        self.clsParts= nn.ModuleList([nn.Sequential(nn.BatchNorm1d(256),nn.Linear(256, class_num)) for i in range(self.part_num-1) ])
+        self.clsParts= nn.ModuleList([nn.Sequential(nn.BatchNorm1d(2048),nn.Linear(2048, class_num)) for i in range(self.part_num-1) ])
 
 
         self.maskGen = nn.Sequential(nn.Conv2d(self.part_num, 128, kernel_size=3, padding=1, stride=2, bias=False),
@@ -241,7 +241,7 @@ class embed_net2(nn.Module):
         featsP = [] # maskedFeat.sum(dim=1)
         for i in range(0, self.part_num - 1): # 0 is background!
             feat = self.part_descriptor[i](maskedFeat[:, i])
-            partsScore.append(self.clsParts[i](feat))
+            partsScore.append(self.clsParts[i](maskedFeat[:, i]))
             featsP.append(feat)
         featsP = torch.cat(featsP, 1)
         scoreP = self.classifierP(featsP)
