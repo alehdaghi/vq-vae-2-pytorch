@@ -158,7 +158,7 @@ def train(epoch, loader, model, optimizer, device):
         feat_sum += feat_err
         feat_size += feat.sum()/(bs * model.person_id.pool_dim)
 
-        if i % 100 == 0:
+        if i % 300 == 0:
             B = labels.shape[0]
             index = np.random.choice(np.arange(B), min(B, 16), replace=False)
             h,w = part[0][1].shape[2], part[0][1].shape[3]
