@@ -68,9 +68,10 @@ class SYSUData(data.Dataset):
 
             parts1 = self.train_rgb_part[self.cIndex[index]]
             parts2 = self.train_ir_part[self.tIndex[index]]
-            parts = [torch.from_numpy(parts1), torch.from_numpy(parts2)]
-            imgs = [TF.to_tensor(img1), TF.to_tensor(img2)]
-            for i in range(2):
+            parts = [torch.from_numpy(parts1), torch.from_numpy(parts2), torch.from_numpy(parts1)]
+            imgs = [TF.to_tensor(img1), TF.to_tensor(img2), TF.to_tensor(self.rgb2RandomChannel(img1)).expand(3,-1,-1)]
+
+            for i in range(3):
                 ii, j, h, w = transforms.RandomCrop.get_params(imgs[i], output_size=(imgs[i].shape[1] - 12, imgs[i].shape[2] - 12))
                 imgs[i] = TF.crop(imgs[i], ii, j, h, w)
                 parts[i] = TF.crop(parts[i], ii, j, h, w)
@@ -82,8 +83,6 @@ class SYSUData(data.Dataset):
                 if random() > 0.5:
                     imgs[i] = TF.vflip(imgs[i])
                     parts[i] = TF.vflip(parts[i])
-
-
                 if random() > 0.5:
                     v = np.random.rand(3) + 0.01
                     v = v / v.sum()
@@ -93,7 +92,7 @@ class SYSUData(data.Dataset):
 
             # img1, parts1 = self.affine(img1, parts1)
             # img2, parts2 = self.affine(img2, parts2)
-            return self.transform(imgs[0]), self.transform(imgs[1]), target1, target2, cam1, cam2, parts[0], parts[1]
+            return self.transform(imgs[0]), self.transform(imgs[1]), target1, target2, cam1, cam2, parts[0], parts[1], self.transform(imgs[2]), parts[2]
 
         return self.transform(img1), self.transform(img2), target1, target2, cam1, cam2
 

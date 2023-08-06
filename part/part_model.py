@@ -234,6 +234,7 @@ class embed_net2(nn.Module):
 
         feat_g = self.bottleneck(x_pool)
         maskedFeat = torch.einsum('brhw, bchw -> brc', part_masks[:,1:], x) / (h * w)
+        maskedFeatX3 = torch.einsum('brhw, bchw -> brc', part_masks[:, 1:], x3) / (h * w)
         # maskedFeat /= einops.reduce(part_masks[:, 1:], 'b r h w -> b r 1', 'sum') + 1e-7
 
         partsScore = []
@@ -253,7 +254,7 @@ class embed_net2(nn.Module):
             masks = part_masks.view(b, self.part_num, w * h)
             loss_reg = None#torch.bmm(masks, masks.permute(0, 2, 1))
             # loss_reg = torch.triu(loss_reg, diagonal=1).sum() / (b * self.part_num * (self.part_num - 1) / 2)
-            return feats, self.classifier(feats), part, loss_reg, maskedFeat, part_masks, partsScore, featsP, scoreP
+            return feats, self.classifier(feats), part, loss_reg, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP
         else:
             return self.l2norm(x_pool), self.l2norm(feats)
 

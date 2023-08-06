@@ -71,28 +71,29 @@ def train(epoch, loader, model, optimizer, device):
     model.person_id.train()
     partsLabel = torch.arange(1,7).cuda()
 
-    for i, (img1, img2, label1, label2, camera1, camera2, p_label1, p_label2) in enumerate(loader):
+    for i, (img1, img2, label1, label2, camera1, camera2, p_label1, p_label2, gray, p_label3) in enumerate(loader):
         # vq_vae, person_id =  model['vq_vae'], model['person_id']
         bs = img1.size(0)
         img1 = img1.to(device)
         img2 = img2.to(device)
+        gray = gray.to(device)
 
-        w = torch.rand(bs, 3).cuda() + 0.01
-        w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
-        gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
+        # w = torch.rand(bs, 3).cuda() + 0.01
+        # w = w / (abs(w.sum(dim=1, keepdim=True)) + 0.01)
+        # gray = torch.einsum('b c w h, b c -> b w h', img1, w).unsqueeze(1).expand(-1, 3, -1, -1)
 
         label1 = label1.to(device)
         label2 = label2.to(device)
         labels = torch.cat((label1,label2, label1), 0)
         imgs = torch.cat((img1, img2, gray), dim=0)
 
-        part_labels = torch.cat((p_label1, p_label2, p_label1), 0).to(device).type(torch.cuda.LongTensor)
+        part_labels = torch.cat((p_label1, p_label2, p_label3), 0).to(device).type(torch.cuda.LongTensor)
         if part_labels.shape[1] == 1:
             part_labels = part_labels.squeeze(1)
         edges = generate_edge_tensor(part_labels).type(torch.cuda.LongTensor)
 
 
-        feat, score, part, loss_reg, partsFeat, part_masks, partsScore, featsP, scoreP = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False, xZ=gray)
+        feat, score, part, loss_reg, partsFeatX3 ,partsFeat, part_masks, partsScore, featsP, scoreP = model.person_id(xRGB=img1, xIR=img2, modal=0, with_feature=False, xZ=gray)
         good_part = (part_labels != 0).type(torch.int).sum(dim=[1, 2]) > 288 * 144 * 0.15
         part_loss = criterionPart([[part[0][0][good_part], part[0][1][good_part]], [part[1][0][good_part]]], [part_labels[good_part], edges[good_part]])  #+ loss_reg
         # part_loss = criterionPart(part, [part_labels, edges])
@@ -100,9 +101,11 @@ def train(epoch, loader, model, optimizer, device):
         pIndex = torch.arange(partsFeat.shape[1]).to(device)
         # t1 = supCons(partsFeat.transpose(0,1), pIndex)
 
-        F = einops.rearrange(featsP, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=2)
-        cont_part2 = contrastive(F.transpose(0,1))
-        unsup_part = contrastive(partsFeat) + cont_part2
+        F = einops.rearrange(featsP, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3) # b m*p d
+        F2 = einops.rearrange(partsFeat, '(m n p) ... -> n (p m) ...', p=args.num_pos, m=3)
+        cont_part2 = sum([contrastive(f) for f in F2]) / args.batch_size
+        cont_part3 = contrastive(F.transpose(0,1))
+        unsup_part = contrastive(partsFeatX3) + cont_part2 + cont_part3
         # t2 = supCons(partsFeat.reshape(-1, 2048), pIndex.repeat(partsFeat.shape[0]))
 
         _, predicted = score.max(1)
