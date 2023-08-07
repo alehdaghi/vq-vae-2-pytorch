@@ -248,7 +248,7 @@ class embed_net2(nn.Module):
         feats = torch.cat([feat_g, featsP], 1)
 
         if with_feature:
-            return feats, self.classifier(feats), part, None, maskedFeat, part_masks, partsScore, x
+            return feats, self.classifier(feats), part, None, maskedFeatX3, maskedFeat, part_masks, partsScore, featsP, scoreP
 
         if self.training:
             masks = part_masks.view(b, self.part_num, w * h)
